@@ -161,7 +161,7 @@ class Institution extends \Tk\Db\Map\Model implements \Tk\ValidInterface, Instit
         if (!$this->_user) {
             if (!$this->getId()) {
                 $this->_user = \Uni\Config::getInstance()->createUser();
-                $this->_user->roleId = \Uni\Db\Role::getDefaultRoleId(\Uni\Db\Role::TYPE_CLIENT);
+                $this->_user->setType(User::TYPE_CLIENT);
             } else {
                 $this->_user = \Uni\Config::getInstance()->getUserMapper()->find($this->userId);
             }

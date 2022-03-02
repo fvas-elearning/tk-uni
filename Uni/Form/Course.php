@@ -4,6 +4,7 @@ namespace Uni\Form;
 use Tk\Form\Field;
 use Tk\Form\Event;
 use Tk\Form;
+use Tk\Str;
 use Uni\Db\Permission;
 
 /**
@@ -35,8 +36,8 @@ class Course extends \Uni\FormIface
         $tab = 'Details';
         $this->appendField(new Field\Input('name'))->setTabGroup($tab);
         $this->appendField(new Field\Input('code'))->setTabGroup($tab);
-        $filter = array('institutionId' => $this->getConfig()->getInstitutionId(), 'permission' => Permission::TYPE_COORDINATOR);
-        $list = $this->getConfig()->getUserMapper()->findFiltered($filter, \Tk\Db\Tool::create('name'));
+        $filter = array('institutionId' => $this->getConfig()->getInstitutionId(), 'permission' => Permission::IS_COORDINATOR);
+        $list = $this->getConfig()->getUserMapper()->findFiltered($filter, \Tk\Db\Tool::create('name_first'));
         $this->appendField(new Field\Select('coordinatorId', $list))->setTabGroup($tab)->prependOption('-- Select --', '');
         $this->appendField(new Field\Input('email'))->setTabGroup($tab);
         $this->appendField(new Field\Textarea('emailSignature'))->setTabGroup($tab)
@@ -44,8 +45,6 @@ class Course extends \Uni\FormIface
         $tab = 'Description';
         $this->appendField(new Field\Textarea('description'))->setTabGroup($tab)
             ->addCss('mce')->setAttr('data-elfinder-path', $this->getCourse()->getDataPath().'/media');
-
-
 
 
 
@@ -83,6 +82,7 @@ class Course extends \Uni\FormIface
         }
         
         $isNew = (bool)$this->getCourse()->getId();
+        $this->getCourse()->setDescription(Str::stripStyles($this->getCourse()->getDescription()));
         $this->getCourse()->save();
 
         // Do Custom data saving

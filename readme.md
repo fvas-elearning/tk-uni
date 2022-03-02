@@ -1,6 +1,6 @@
 # Tk UNI Lib 
 
-__Project:__ [ttek/tk-uni](http://packagist.org/packages/ttek/tk-uni)  
+__Project:__ [uom/tk-uni](http://packagist.org/packages/uom/tk-uni)  
 __Published:__ 19 Dec 2018
 __Web:__ <http://www.tropotek.com/>  
 __Authors:__ Michael Mifsud <http://www.tropotek.com/>  
@@ -14,22 +14,21 @@ A base lib for all university institution sites
 
 ## Installation
 
-Available on Packagist ([ttek/tk-form](http://packagist.org/packages/ttek/tk-uni))
+Available on Packagist ([uom/tk-form](http://packagist.org/packages/uom/tk-uni))
 and as such installable via [Composer](http://getcomposer.org/).
 
 ```bash
-composer require ttek/tk-uni
+composer require uom/tk-uni
 ```
 
 Or add the following to your composer.json file:
 
 ```json
-"ttek/tk-uni": "~2.0"
+"uom/tk-uni": "~3.4"
 ```
 
 If you do not use Composer, you can grab the code from GitHub, and use any
-PSR-0 compatible autoloader (e.g. the [tk-uni](https://github.com/tropotek/tk-uni))
-to load the classes.
+PSR-0 compatible autoloader to load the classes.
 
 ## Introduction
 

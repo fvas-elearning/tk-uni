@@ -1,8 +1,11 @@
 <?php
 namespace Uni\Controller;
 
+use Tk\Db\Tool;
 use Tk\Form\Field;
 use Tk\Form\Event;
+use Uni\Db\Institution;
+use Uni\Db\InstitutionMap;
 
 
 /**
@@ -18,11 +21,6 @@ class Login extends \Bs\Controller\Login
      */
     protected $institution = null;
 
-    /**
-     * @var string
-     */
-    protected $isInstLogin = false;
-
 
     /**
      * Login constructor.
@@ -37,14 +35,23 @@ class Login extends \Bs\Controller\Login
      * @param string $instHash
      * @throws \Exception
      */
-    public function doInsLogin(\Tk\Request $request, $instHash)
+    public function doInsLogin(\Tk\Request $request, $instHash = '')
     {
-        $this->isInstLogin = true;
-        if (!$this->institution) {
-            $this->institution = $this->getConfig()->getInstitutionMapper()->findByHash($instHash);
+        $this->institution = $this->getConfig()->getInstitutionMapper()->findByHash($instHash);
+        if (!$this->institution && $request->attributes->has('institutionId')) {
+            $this->institution = $this->getConfig()->getInstitutionMapper()->find($request->attributes->get('institutionId'));
         }
+        // get institution by hostname
         if (!$this->institution || !$this->institution->active ) {
-            \Tk\Alert::addWarning('Invalid or inactive Institution.');
+            $this->institution = $this->getConfig()->getInstitutionMapper()->findByDomain($request->getTkUri()->getHost());
+        }
+        // Get the first available institution
+        if (!$this->institution || !$this->institution->active ) {
+            $this->institution = $this->getConfig()->getInstitutionMapper()->findFiltered(array())->current();
+        }
+
+        if (!$this->institution || !$this->institution->active ) {
+            \Tk\Alert::addWarning('Invalid or inactive Institution. Setup an active institution to continue.');
             \Uni\Uri::create('/index.html')->redirect();
         }
 
@@ -57,16 +64,9 @@ class Login extends \Bs\Controller\Login
      */
     public function doDefault(\Tk\Request $request)
     {
-        if (!$this->institution) {
-            $this->institution = $this->getConfig()->getInstitutionMapper()->findByDomain($request->getTkUri()->getHost());
-            if (!$this->institution && $request->attributes->has('institutionId')) {
-                $this->institution = $this->getConfig()->getInstitutionMapper()->find($request->attributes->get('institutionId'));
-            }
-        }
-
         $this->init();
 
-        if ($this->institution && $this->isInstLogin) {
+        if ($this->institution) {
             $this->form->appendField(new Field\Hidden('instHash', $this->institution->getHash()));
         }
         $this->form->execute();
@@ -104,7 +104,6 @@ class Login extends \Bs\Controller\Login
     public function show()
     {
         $template = parent::show();
-
         if ($this->institution) {
             if ($this->institution->getLogoUrl()) {
                 $template->setVisible('instLogo');
@@ -112,15 +111,14 @@ class Login extends \Bs\Controller\Login
             }
             $template->insertText('instName', $this->institution->name);
             $template->setVisible('inst');
-            $this->getPage()->getTemplate()->setVisible('has-inst');
+            $this->getPage()->getTemplate()->setVisible('hasInst');
         } else {
-            $template->setVisible('noinst');
+            $template->setVisible('noInst');
             $template->setVisible('recover');
         }
 
         return $template;
     }
-
 
     /**
      * @return \Dom\Template

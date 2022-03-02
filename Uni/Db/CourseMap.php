@@ -1,6 +1,7 @@
 <?php
 namespace Uni\Db;
 
+use Tk\Date;
 use Tk\Db\Tool;
 use Tk\Db\Map\ArrayObject;
 use Tk\DataMap\Db;
@@ -22,7 +23,7 @@ class CourseMap extends Mapper
      */
     public function getDbMap()
     {
-        if (!$this->dbMap) { 
+        if (!$this->dbMap) {
             $this->dbMap = new \Tk\DataMap\DataMap();
             $this->dbMap->addPropertyMap(new Db\Integer('id'), 'key');
             $this->dbMap->addPropertyMap(new Db\Integer('institutionId', 'institution_id'));
@@ -141,19 +142,31 @@ class CourseMap extends Mapper
         if (!empty($filter['email'])) {
             $filter->appendWhere('a.email = %s AND ', $this->quote($filter['email']));
         }
-        if (!empty($filter['subjectId'])) {
+        if (!empty($filter['subjectId']) || !empty($filter['active'])) {
             $filter->appendFrom(' ,%s c', $this->quoteTable('subject'));
-            $filter->appendWhere('a.id = c.course_id AND c.subject_id = %s AND ', (int)$filter['subjectId']);
+            $filter->appendWhere('a.id = c.course_id AND ');
+
+            if (!empty($filter['subjectId'])) {
+                $filter->appendWhere('c.id = %s AND ', (int)$filter['subjectId']);
+            }
+            if (!empty($filter['active'])) {        // Only with active subjects???? (see SubjectMap)
+                $active = null;
+                if (isset($filter['active']) && $filter['active'] !== null && $filter['active'] !== '') $active = (int)$filter['active'];
+                $now = Date::create()->format(Date::FORMAT_ISO_DATETIME);
+                if ($active) {
+                    $filter->appendWhere('c.date_start <= %s AND c.date_end >= %s AND ', $this->quote($now), $this->quote($now));
+                } else {
+                    $filter->appendWhere('c.date_start > %s OR c.date_end < %s AND ', $this->quote($now), $this->quote($now));
+                }
+            }
         }
         if (!empty($filter['userId'])) {
+            $filter['staffId'] = $filter['userId'];
+        }
+        if (!empty($filter['staffId'])) {
             $filter->appendFrom(' ,%s b', $this->quoteTable('course_has_user'));
-            $filter->appendWhere('a.id = b.course_id AND b.user_id = %s AND ', (int)$filter['userId']);
+            $filter->appendWhere('a.id = b.course_id AND b.user_id = %s AND ', (int)$filter['staffId']);
         }
-        // TODO
-        if (!empty($filter['active'])) {        // Only with active courses???? (see SubjectMap)
-
-        }
-
 
         if (!empty($filter['exclude'])) {
             $w = $this->makeMultiQuery($filter['exclude'], 'a.id', 'AND', '!=');

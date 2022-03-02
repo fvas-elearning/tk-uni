@@ -4,6 +4,7 @@ namespace Uni\Form;
 use Tk\Form\Field;
 use Tk\Form\Event;
 use Tk\Form;
+use Tk\Str;
 
 /**
  * Example:
@@ -38,10 +39,10 @@ class Subject extends \Uni\FormIface
         $this->appendField(new Field\Input('code'))->setTabGroup($tab)->setRequired(true);
         $list = $this->getConfig()->getCourseMapper()->findFiltered(array('institutionId' => $this->getConfig()->getInstitutionId()), \Tk\Db\Tool::create('name'));
         $this->appendField(new Field\Select('courseId', $list))->prependOption('-- Select --', '')
-            ->setTabGroup($tab)->setRequired(true)->setNotes('Select a course group. <a href="/staff/courseEdit.html">Click here to create a new Course.</a>');
+            ->setTabGroup($tab)->setRequired(true); //->setNotes('Select a course group. <a href="/staff/courseEdit.html">Click here to create a new Course.</a>');
         $this->appendField(new Field\Input('email'))->setTabGroup($tab)->setRequired(true);
         $this->appendField(new Field\DateRange('date'))->setTabGroup($tab)->setRequired(true)->setLabel('Dates')
-            ->setNotes('The start and end dates of the subject. Student submission functionality may be restricted outside these dates.');
+            ->setNotes('The start and end dates of the subject. Students will not have access to subject after end date');
 
         $this->appendField(new Field\Checkbox('publish'))->setTabGroup($tab)
             ->setCheckboxLabel('Allow students access to this subject and its data.');
@@ -80,21 +81,19 @@ class Subject extends \Uni\FormIface
         $this->getConfig()->getSubjectMapper()->mapForm($form->getValues(), $this->getSubject());
 
         // Do Custom Validations
-
         $form->addFieldErrors($this->getSubject()->validate());
         if ($form->hasErrors()) {
             return;
         }
         
         $isNew = !(bool)$this->getSubject()->getId();
+        $this->getSubject()->setDescription(Str::stripStyles($this->getSubject()->getDescription()));
         $this->getSubject()->save();
 
-        // If this is a staff member add them to the subject
+        // If this is a staff member add them to the course
         if ($this->getAuthUser()->isStaff()) {
-            $this->getConfig()->getSubjectMapper()->addUser($this->getSubject()->getId(), $this->getAuthUser()->getId());
+            $this->getConfig()->getCourseMapper()->addUser($this->getSubject()->getCourseId(), $this->getAuthUser()->getId());
         }
-
-        // Do Custom data saving
 
         \Tk\Alert::addSuccess('Record saved!');
         $event->setRedirect($this->getBackUrl());

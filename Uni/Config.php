@@ -1,7 +1,12 @@
 <?php
 namespace Uni;
 
+use Bs\Db\Status;
+use Bs\Db\StatusMap;
+use Tk\Db\ModelInterface;
 use Uni\Db\Course;
+use Uni\Db\Permission;
+use Uni\Db\User;
 
 /**
  * @author Michael Mifsud <info@tropotek.com>
@@ -88,6 +93,9 @@ class Config extends \Bs\Config
                 } else {
                     $obj = $this->getInstitutionMapper()->findByDomain(\Tk\Uri::create()->getHost());
                 }
+                if (!$obj && $this->getInstitutionMapper()->findActive()->count() == 1) {
+                    $obj = $this->getInstitutionMapper()->findActive()->current();
+                }
             } catch (\Exception $e) { \Tk\Log::error($e->__toString()); }
             $this->set('institution', $obj);
         }
@@ -169,6 +177,7 @@ class Config extends \Bs\Config
                 }
                 $route = $this->getRequest()->attributes->get('_route');
                 $routePath = $this->getRouteCollection()->get($route)->getPath();
+                // TODO: this is kinda odd and does not make sense to have the rout path if using the session (code need optimising)
                 if (!$subject && $this->getSession()->has(self::SID_SUBJECT) && strpos($routePath, '/{subjectCode}') !== false) {
                     $subject = $this->getSubjectMapper()->find(self::getSession()->get(self::SID_SUBJECT));
                 }
@@ -190,8 +199,9 @@ class Config extends \Bs\Config
     public function getSubjectId()
     {
         $sid = 0;
-        if ($this->getSubject())
+        if ($this->getSubject()) {
             $sid = $this->getSubject()->getId();
+        }
         return (int)$sid;
     }
 
@@ -237,9 +247,26 @@ class Config extends \Bs\Config
     }
 
     /**
+     * @return \Tk\Crumbs
+     */
+    public function getCrumbs()
+    {
+        $crumbs = parent::getCrumbs();
+        if ($this->isLti()) {
+            $list = $crumbs->getList();
+            if (isset($list[$crumbs->getHomeTitle()])) {
+                unset($list[$crumbs->getHomeTitle()]);
+                $crumbs->setList($list);
+            }
+        }
+        return $this->get('crumbs');
+    }
+
+    /**
      * This function returns true if the url is one that uses the {subjectCode}
      *
      * @return bool
+     * @todo: fix this as stoin this value within the config object is senseless as false is a valid value
      */
     public function isSubjectUrl()
     {
@@ -256,6 +283,15 @@ class Config extends \Bs\Config
         return $this->get('is.subject.url');
     }
 
+    /**
+     * @return boolean
+     */
+    public function isMentorUrl()
+    {
+        $url = \Tk\Uri::create();
+        if ($url->basename() == 'mentorImport.html' || $url->basename() == 'mentorList.html') return false;
+        return (bool)preg_match('|(staff/mentor)|', $url->getRelativePath());
+    }
 
     /**
      * A helper method to create an instance of an Auth adapter
@@ -295,29 +331,32 @@ class Config extends \Bs\Config
         }
         return '';
     }
-
-    /**
-     * @param string $formId
-     * @return \Tk\Form
-     */
-    public function createForm($formId)
-    {
-        $form = \Tk\Form::create($formId);
-        $form->setDispatcher($this->getEventDispatcher());
-        return $form;
-    }
-
-    /**
-     * @param \Tk\Form $form
-     * @return \Tk\Form\Renderer\Dom|\Tk\Form\Renderer\Iface
-     */
-    public function createFormRenderer($form)
-    {
-        $obj = \Tk\Form\Renderer\Dom::create($form);
-        $obj->setFieldGroupRenderer($this->getFormFieldGroupRenderer($form));
-        $obj->getLayout()->setDefaultCol('col');
-        return $obj;
-    }
+//
+//    /**
+//     * @param string $formId
+//     * @return \Tk\Form
+//     */
+//    public function createForm($formId)
+//    {
+//        $form = \Tk\Form::create($formId);
+//        $form->setDispatcher($this->getEventDispatcher());
+//        // TODO: check this does not cause issues
+//        $form->setRenderer($this->createFormRenderer($form));
+//        return $form;
+//    }
+//
+//    /**
+//     * @param \Tk\Form $form
+//     * @return \Tk\Form\Renderer\Dom|\Tk\Form\Renderer\Iface
+//     */
+//    public function createFormRenderer($form)
+//    {
+//        $obj = \Tk\Form\Renderer\Dom::create($form);
+//        //$obj = \Tk\Form\Renderer\DomRenderer::create($form);
+//        $obj->setFieldGroupRenderer($this->getFormFieldGroupRenderer($form));
+//        $obj->getLayout()->setDefaultCol('col');
+//        return $obj;
+//    }
 
 
 
@@ -370,27 +409,6 @@ class Config extends \Bs\Config
     public function getUserIdentity($user)
     {
         return $user->getId();
-    }
-
-
-
-    /**
-     * @return Db\RoleMap
-     */
-    public function getRoleMapper()
-    {
-        if (!$this->get('obj.mapper.role')) {
-            $this->set('obj.mapper.role', Db\RoleMap::create());
-        }
-        return $this->get('obj.mapper.role');
-    }
-
-    /**
-     * @return Db\Role|Db\RoleIface
-     */
-    public function createRole()
-    {
-        return new Db\Role();
     }
 
     /**
@@ -477,7 +495,8 @@ class Config extends \Bs\Config
      */
     public function canChangePassword()
     {
-        return (!$this->getSession()->has('auth.password.access') || $this->getSession()->get('auth.password.access'));
+        //return (!$this->getSession()->has('auth.password.access') || $this->getSession()->get('auth.password.access', true));
+        return $this->getSession()->get('auth.password.access', true);
     }
 
     /**
@@ -489,6 +508,7 @@ class Config extends \Bs\Config
     public function getUserHomeUrl($user = null)
     {
         if (!$user) $user = $this->getAuthUser();
+        if (!$user) return \Uni\Uri::create('/login.html');
         return \Uni\Uri::createHomeUrl('/index.html', $user);
     }
 
@@ -511,6 +531,16 @@ class Config extends \Bs\Config
         $this->set('user', $user);
         return $this;
     }
+
+    /**
+     * @return Permission|null
+     */
+    public function getPermission()
+    {
+        return \Uni\Db\Permission::getInstance();
+    }
+
+
 
     /**
      * @param \Tk\EventDispatcher\EventDispatcher $dispatcher
@@ -554,38 +584,14 @@ class Config extends \Bs\Config
     }
 
     /**
-     * @param string $homeTitle
-     * @param string $homeUrl
-     * @return \Tk\Crumbs
+     * @return \Bs\Listener\InstallHandler
      */
-    public function getCrumbs($homeTitle = null, $homeUrl = null)
+    public function getInstallHandler()
     {
-        // TODO: should this be in the LTI plugin?
-        $crumbs = parent::getCrumbs($homeTitle, $homeUrl);
-        if ($this->isLti()) {
-            $list = $crumbs->getList();
-            if (isset($list['Dashboard'])) {
-                unset($list['Dashboard']);
-                $crumbs->setList($list);
-            }
+        if (!$this->get('handler.installer')) {
+            $this->set('handler.installer', new \Uni\Listener\InstallHandler());
         }
-//        if (!$this->get('crumbs')) {
-////            if ($homeTitle)
-////                \Tk\Crumbs::$homeTitle = $homeTitle;
-////            if ($homeUrl)
-////                \Tk\Crumbs::$homeUrl = $homeUrl;
-////            $obj = \Tk\Crumbs::getInstance();
-////            $this->set('crumbs', $obj);
-//            $crumbs = parent::getCrumbs($homeTitle, $homeUrl);
-//            if ($this->isLti()) {
-//                $list = $crumbs->getList();
-//                if (isset($list['Dashboard'])) {
-//                    unset($list['Dashboard']);
-//                    $crumbs->setList($list);
-//                }
-//            }
-//        }
-        return $this->get('crumbs');
+        return $this->get('handler.installer');
     }
 
     /**
@@ -595,11 +601,12 @@ class Config extends \Bs\Config
      */
     public function isLti()
     {
-        // TODO: should this be in the LTI plugin?
-        if ($this->get('force.lti.template') || $this->getSession()->has('lti_launch')) {
-            return true;
-        }
-        return false;
+        return $this->getSession()->get('isLti', false);
+//        if ($this->getAuthUser() && $this->getAuthUser()->hasType(User::TYPE_STAFF, User::TYPE_STUDENT)) {
+//            return $this->getSession()->get('isLti', false);
+//        }
+//        $this->getSession()->remove('isLti');
+//        return true;
     }
 
     /**
@@ -609,8 +616,7 @@ class Config extends \Bs\Config
     public function getPage($templatePath = '')
     {
         if (!$this->get('controller.page')) {
-            // TODO: Look into a way to move this somehow into the LTI plugin
-            if ($this->isLti() && $this->has('template.lti') && $this->isSubjectUrl()) {
+            if (($this->isLti() || $this->get('force.lti.template')) && $this->has('template.lti') && $this->isSubjectUrl()) {
                 $templatePath = $this->getSitePath() . $this->get('template.lti');
             }
         }
@@ -624,6 +630,16 @@ class Config extends \Bs\Config
     public function createPage($templatePath = '')
     {
         return new Page($templatePath);
+    }
+
+    /**
+     *
+     * @param ModelInterface $model
+     * @return Status
+     */
+    public function createStatus($model)
+    {
+        return \Uni\Util\Status::create($model);
     }
 
     /**
@@ -654,6 +670,22 @@ class Config extends \Bs\Config
             mkdir($dataPath . '/.trash/', 0777, true);
         }
         return array($dataPath, $dataUrl);
+    }
+
+    /**
+     * @return string
+     */
+    public function getAdminEmailMsg()
+    {
+        $email = 'your Subject Coordinator';
+        if ($this->getInstitution() && $this->getInstitution()->getEmail())
+            $email = sprintf('<a href="mailto:%s">%s</a>.', $this->getInstitution()->getEmail(), $this->getInstitution()->getEmail());
+        if ($this->getCourse() && $this->getCourse()->getEmail())
+            $email = sprintf('<a href="mailto:%s">%s</a>.', $this->getCourse()->getEmail(), $this->getCourse()->getEmail());
+        if ($this->getSubject() && $this->getSubject()->getEmail())
+            $email = sprintf('<a href="mailto:%s">%s</a>.', $this->getSubject()->getEmail(), $this->getSubject()->getEmail());
+
+        return $email;
     }
 
 }

@@ -51,7 +51,6 @@ class Register extends Iface
                 $templatePath = $this->getConfig()->getSitePath() . $this->getConfig()->get('template.login');
             }
             $this->page = $this->getConfig()->createPage($templatePath);
-            $this->page->setController($this);
         }
         return parent::getPage();
     }
@@ -71,8 +70,7 @@ class Register extends Iface
         }
 
         $this->user = $this->getConfig()->createUser();
-        $this->user->roleId = \Uni\Db\Role::DEFAULT_TYPE_COORDINATOR;
-
+        $this->user->setType(\Uni\Db\User::TYPE_STAFF);
         $this->init();
 
         $this->form->load($this->getConfig()->getUserMapper()->unmapForm($this->user));
@@ -143,13 +141,13 @@ class Register extends Iface
         }
 
         // Create a user and make a temp hash until the user activates the account
-        $this->user->roleId = \Uni\Db\Role::DEFAULT_TYPE_CLIENT;
-        $this->user->active = false;
+        $this->user->setType(\Uni\Db\User::TYPE_CLIENT);
+        $this->user->setActive(false);
         $this->user->setNewPassword($pass);
         $this->user->save();
 
-        $this->institution->userId = $this->user->getId();
-        $this->institution->active = false;
+        $this->institution->setUserId($this->user->getId());
+        $this->institution->setActive(false);
         $this->institution->save();
 
         // Fire the login event to allow developing of misc auth plugins
@@ -189,12 +187,12 @@ class Register extends Iface
             \Tk\Uri::create('/login.html')->redirect();
         }
 
-        $institution = $this->getConfig()->getInstitutionMapper()->findByUserId($user->id);
+        $institution = $this->getConfig()->getInstitutionMapper()->findByUserId($user->getId());
 
-        $user->active = true;
+        $user->setActive(true);
         $user->save();
 
-        $institution->active = true;
+        $institution->setActive(true);
         $institution->save();
 
         $e = new \Tk\Event\Event();

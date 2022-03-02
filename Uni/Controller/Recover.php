@@ -43,7 +43,8 @@ class Recover extends Iface
                 $templatePath = $this->getConfig()->getSitePath() . $this->getConfig()->get('template.login');
             }
             $this->page = $this->getConfig()->createPage($templatePath);
-            $this->page->setController($this);
+            // TODO: Is this correct???
+            //$this->page->setController($this);
         }
         return parent::getPage();
     }

@@ -27,6 +27,16 @@ $config['sql.migrate.list'] = array(
 );
 
 /*
+ * The user types available to the system
+ */
+$config['user.type.list'] = array(
+    'Administrator' => 'admin',
+    'Client' => 'client',
+    'Staff' => 'staff',
+    'Student' => 'student'
+);
+
+/*
  * Template folders for pages
  */
 $config['system.template.path'] = '/html';

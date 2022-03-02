@@ -3,6 +3,7 @@ namespace Uni\Controller\Subject;
 
 use Dom\Template;
 use Tk\Form\Field;
+use Tk\Log;
 use Tk\Request;
 
 
@@ -10,6 +11,7 @@ use Tk\Request;
  * @author Michael Mifsud <info@tropotek.com>
  * @link http://www.tropotek.com/
  * @license Copyright 2015 Michael Mifsud
+ * @deprecated I think, not sure if it is used anywhere (24-01-2022)
  */
 class StudentManager extends \Uni\Controller\AdminIface
 {
@@ -26,6 +28,7 @@ class StudentManager extends \Uni\Controller\AdminIface
      */
     public function __construct()
     {
+        Log::alert('This is a deprecated class I think, remove this message and note where is it used in the code if not.');
         $this->setPageTitle('My Subjects');
         $this->getConfig()->unsetSubject();
     }

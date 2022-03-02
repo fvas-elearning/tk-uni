@@ -1,28 +1,31 @@
 {
-    "name": "ttek/tk-uni",
+    "name": "uom/tk-uni",
     "type": "library",
     "description": "A base lib for all university institution sites",
-    "keywords": [
+    "keywords":  [
         "tropotek",
         "uni",
         "Bootstrap"
     ],
-    "time": "2020-02-18",
+    "time": "2021-12-15",
     "license": "MIT",
-    "authors": [
-        {
+    "authors":  [
+         {
             "name": "Michael Mifsud",
-            "email": "info@tropotek.com.au",
             "homepage": "http://www.tropotek.com/"
         }
     ],
-    "autoload": {
-        "psr-0": {
+    "autoload":  {
+        "psr-0":  {
             "Uni\\": ""
         }
     },
-    "require": {
-        "ttek/tk-base": "~3.0.0",
-        "ttek/tk-mvc": "~3.0.0"
+    "require":  {
+        "uom/tk-base": "~3.2.0"
+    },
+    "extra":  {
+        "branch-alias":  {
+            "dev-master": "3.4.x-dev"
+        }
     }
 }

@@ -9,7 +9,7 @@ use Dom\Template;
 use Tk\Ui\Link;
 use Uni\Config;
 use Uni\Controller\AdminIface;
-use Uni\Db\Role;
+use Uni\Db\Permission;
 use Uni\Db\Subject;
 use Uni\Db\SubjectIface;
 use Uni\Db\User;
@@ -83,6 +83,11 @@ class EnrollmentManager extends AdminIface
      */
     public function doDefault(Request $request)
     {
+        if (!$this->getAuthUser()->hasPermission(Permission::MANAGE_SUBJECT)) {
+            \Tk\Alert::addWarning('You do not have permission to edit this resource.');
+            $this->getConfig()->getBackUrl()->redirect();
+        }
+
         $subject = $this->getSubject();
         if (!$subject) {
             throw new \Tk\Exception('Invalid subject details');
@@ -120,7 +125,7 @@ class EnrollmentManager extends AdminIface
             $i = 0;
             /** @var \Uni\Db\User $user */
             foreach ($userList as $user) {
-                if (!$user->isEnrolled($destSubject->getId())) {
+                if (!$user->isEnrolled($destSubject->getId()) && $user->isStudent()) {
                     $config->getSubjectMapper()->addUser($destSubject->getId(), $user->getId());
                     $i++;
                 }
@@ -137,7 +142,7 @@ class EnrollmentManager extends AdminIface
         $filter = array();
         $filter['institutionId'] = $this->getSubject()->institutionId;
         $filter['active'] = '1';
-        $filter['type'] = array(Role::TYPE_STUDENT, Role::TYPE_COORDINATOR);
+        $filter['type'] = array(User::TYPE_STUDENT, User::TYPE_STAFF);
 
         $this->enrolStudentDialog = new AjaxSelect('Enrol Student', Uri::create('/ajax/user/findFiltered.html'));
         $this->enrolStudentDialog->setAjaxParams($filter);
@@ -150,7 +155,7 @@ class EnrollmentManager extends AdminIface
             $user = $config->getUserMapper()->find($data['selectedId'], $subject->getInstitutionId());
             if (!$user)
                 throw new \Tk\Exception('Invalid user selected');
-            if (!$user || (!$user->hasPermission(\Uni\Db\Permission::TYPE_STAFF) && !$user->hasPermission(\Uni\Db\Permission::TYPE_STUDENT))) {
+            if (!$user || !$user->isStudent()) {
                 Alert::addWarning('Invalid user.');
             } else {
                 if (!$user->isEnrolled($subject->getId())) {
@@ -170,7 +175,7 @@ class EnrollmentManager extends AdminIface
         $this->enrolledTable->setAjaxDialogParams($this->enrolledAjaxDialogParams);
         $this->enrolledTable->init();
         $filter = array('subjectId' => $this->getSubject()->getId());
-        $filter['type'] = array(Role::TYPE_COORDINATOR, Role::TYPE_STUDENT);
+        $filter['type'] = array(User::TYPE_STAFF, User::TYPE_STUDENT);
         $this->enrolledTable->setList($this->enrolledTable->findList($filter));
 
         // Pre-Enrol table

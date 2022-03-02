@@ -1,4 +1,9 @@
 <?php
+/**
+ * @version 3.0
+ *
+ * @author: Michael Mifsud <info@tropotek.com>
+ */
 
 try {
     $config = \App\Config::getInstance();

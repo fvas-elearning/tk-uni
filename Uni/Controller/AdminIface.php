@@ -54,7 +54,7 @@ class AdminIface extends \Bs\Controller\AdminIface
      */
     public function getSubjectId()
     {
-        $this->getConfig()->getSubjectId();
+        return $this->getConfig()->getSubjectId();
     }
 
 }

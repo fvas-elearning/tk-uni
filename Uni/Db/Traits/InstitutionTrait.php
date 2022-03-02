@@ -41,7 +41,7 @@ trait InstitutionTrait
     /**
      * Get the Institution object
      *
-     * @return \Tk\Db\Map\Model|\Tk\Db\ModelInterface|InstitutionIface
+     * @return \Tk\Db\Map\Model|\Tk\Db\ModelInterface|InstitutionIface|Institution
      */
     public function getInstitution()
     {

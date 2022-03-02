@@ -2,6 +2,9 @@
 namespace Uni\Controller\Subject;
 
 
+use Tk\Ui\Dialog\AjaxSelect;
+use Uni\Db\Permission;
+
 /**
  * @author Michael Mifsud <info@tropotek.com>
  * @link http://www.tropotek.com/
@@ -38,11 +41,14 @@ class Edit extends \Uni\Controller\AdminEditIface
             $this->subject = $this->getConfig()->getSubject();
             if (!$this->subject) {
                 $this->subject = $this->getConfig()->createSubject();
-                $this->subject->institutionId = $this->getConfig()->getInstitutionId();
-                $this->subject->email = $this->getConfig()->getInstitution()->getEmail();
+                $this->subject->setInstitutionId($this->getConfig()->getInstitutionId());
+                if ($this->getRequest()->has('courseId')) {
+                    $this->subject->setCourseId($this->getRequest()->get('courseId'));
+                }
+                $this->subject->setEmail($this->getConfig()->getInstitution()->getEmail());
                 if ($request->get('subjectId')) {
                     $this->subject = $this->getConfig()->getSubjectMapper()->find($request->get('subjectId'));
-                    if ($this->getConfig()->getInstitutionId() != $this->subject->institutionId) {
+                    if ($this->getConfig()->getInstitutionId() != $this->subject->getInstitutionId()) {
                         \Tk\Alert::addError('You do not have permission to edit this subject.');
                         \Uni\Uri::createHomeUrl('/index.html')->redirect();
                     }
@@ -52,6 +58,17 @@ class Edit extends \Uni\Controller\AdminEditIface
         return $this->subject;
     }
 
+    /**
+     * @param \Tk\Request $request
+     * @throws \Exception
+     */
+    protected function createForm(\Tk\Request $request)
+    {
+        $this->setForm(\Uni\Form\Subject::create()->setModel($this->subject));
+        $this->initForm($request);
+        $this->getForm()->execute($request);
+    }
+
 
     /**
      * @param \Tk\Request $request
@@ -59,28 +76,38 @@ class Edit extends \Uni\Controller\AdminEditIface
      */
     public function doDefault(\Tk\Request $request)
     {
-        $this->subject = $this->findSubject($request);
+        if (!$this->getAuthUser()->isClient() && !$this->getAuthUser()->hasPermission(Permission::MANAGE_SUBJECT)) {
+            \Tk\Alert::addWarning('You do not have permission to edit this resource.');
+            $this->getConfig()->getBackUrl()->redirect();
+        }
 
-        $this->setForm(\Uni\Form\Subject::create()->setModel($this->subject));
-        $this->initForm($request);
-        $this->getForm()->execute($request);
+        $this->subject = $this->findSubject($request);
+        $this->createForm($request);
+
+//        $this->setForm(\Uni\Form\Subject::create()->setModel($this->subject));
+//        $this->initForm($request);
+//        $this->getForm()->execute($request);
 
         if ($this->subject->getId()) {
             $this->userTable = \Uni\Table\UserList::create();
+            $this->userTable->setUserType(\Uni\Db\User::TYPE_STUDENT);
             $this->userTable->setEditUrl(\Uni\Uri::createSubjectUrl('/studentUserEdit.html'));
             $this->userTable->setAjaxParams(array(
                 'institutionId' => $this->getConfig()->getInstitutionId(),
                 'active' => 1,
-                'permission' => \Uni\Db\Permission::TYPE_STUDENT
+                'type' => \Uni\Db\User::TYPE_STUDENT
             ));
-            $this->userTable->setOnSelect(function (\Uni\Table\UserList $dialog) {
+            $this->userTable->setOnSelect(function (AjaxSelect $dialog) {
                 /** @var \Uni\Db\User $user */
                 $config = $dialog->getConfig();
                 $data = $config->getRequest()->all();
                 $subject = $config->getSubject();
                 $user = $config->getUserMapper()->find($data['selectedId']);
+
                 if (!$user) {
                     \Tk\Alert::addWarning('User not found!');
+                } else if (!$user->isStudent()) {
+                    \Tk\Alert::addWarning('User is not a student!');
                 } else if (!$subject) {
                     \Tk\Alert::addWarning('Subject not found!');
                 } else if (!$config->getSubjectMapper()->hasUser($subject->getId(), $user->getId())) {
@@ -93,8 +120,8 @@ class Edit extends \Uni\Controller\AdminEditIface
             });
             $this->userTable->init();
             $filter = array(
-                'id' => \Uni\Db\SubjectMap::create()->findUsers($this->subject->getId()),
-                'permission' => \Uni\Db\Permission::TYPE_STUDENT
+                'id' => $this->getConfig()->getSubjectMapper()->findUsers($this->subject->getId()),
+                'type' => \Uni\Db\User::TYPE_STUDENT
             );
             if (count($filter['id']))
                 $this->userTable->setList($this->userTable->findList($filter));
@@ -107,16 +134,22 @@ class Edit extends \Uni\Controller\AdminEditIface
     public function initActionPanel()
     {
         if ($this->subject->getId() && ($this->getAuthUser()->isStaff() || $this->getAuthUser()->isClient())) {
-            if ($this->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT)) {
-                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Plugins',
-                    \Uni\Uri::createHomeUrl('/subject/' . $this->subject->getId() . '/plugins.html')->set('subjectId', $this->subject->getId()), 'fa fa-plug'));
-            }
-            if(!$this->getConfig()->isSubjectUrl()) {
-                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Enrollments',
-                    \Uni\Uri::createHomeUrl('/subjectEnrollment.html')->set('subjectId', $this->subject->getId()), 'fa fa-list'));
-            } else {
-                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Enrollments',
-                    \Uni\Uri::createSubjectUrl('/subjectEnrollment.html'), 'fa fa-list'));
+            if ($this->getAuthUser()->isClient() || $this->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT)) {
+                if ($this->getAuthUser()->hasPermission(Permission::MANAGE_SITE)) {
+                    $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Plugins',
+                        \Uni\Uri::createHomeUrl('/subject/' . $this->subject->getId() . '/plugins.html')->set('subjectId', $this->subject->getId()), 'fa fa-plug'));
+                }
+                if ($this->getAuthUser()->isStaff() && $this->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT)) {
+                    $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Students',
+                        \Uni\Uri::createSubjectUrl('/studentUserManager.html'), 'fa fa-group'));
+                }
+                if($this->getConfig()->isSubjectUrl()) {
+                    $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Enrollments',
+                        \Uni\Uri::createSubjectUrl('/subjectEnrollment.html'), 'fa fa-list'));
+                } else {
+                    $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Enrollments',
+                        \Uni\Uri::createHomeUrl('/subjectEnrollment.html')->set('subjectId', $this->subject->getId()), 'fa fa-list'));
+                }
             }
         }
     }
@@ -140,8 +173,9 @@ class Edit extends \Uni\Controller\AdminEditIface
             $template->setVisible('right-panel', false);
             $template->removeCss('left-panel', 'col-8')->addCss('left-panel', 'col-md-12 col-12');
         } else {
-            if ($this->userTable)
+            if ($this->userTable) {
                 $template->appendTemplate('right-panel-01', $this->userTable->show());
+            }
         }
 
         return $template;

@@ -1,15 +1,17 @@
 <?php
-namespace Uni\Db;
+namespace Uni\Util;
 
 use Bs\Db\Traits\StatusTrait;
 use Exception;
 use Tk\Db\ModelInterface;
+use Uni\Db\Course;
+use Uni\Db\Institution;
+use Uni\Db\Subject;
 
 /**
  * @author Michael Mifsud <info@tropotek.com>
  * @see http://www.tropotek.com/
  * @license Copyright 2015 Michael Mifsud
- * @deprecated use \Bs\Db\Status
  */
 class Status
 {
@@ -61,7 +63,8 @@ class Status
                 if (!$status->getCourseId() && method_exists($model, 'getSubject')) {
                     /** @var Subject $subject */
                     $subject = $model->getSubject();
-                    $status->setCourseId($subject->getCourseId());
+                    if ($subject)
+                        $status->setCourseId($subject->getCourseId());
                 }
             } else if ($status->getConfig()->getSubjectId()) {
                 $status->setSubjectId($status->getConfig()->getSubjectId());

@@ -42,12 +42,13 @@ trait CourseTrait
     /**
      * Get the course related to this object
      *
-     * @return Course|\App\Db\Course|null
+     * @return CourseIface|Course|\App\Db\Course|null
      */
     public function getCourse()
     {
         if (!$this->_course) {
             try {
+                /** @var Course _course */
                 $this->_course = Config::getInstance()->getCourseMapper()->find($this->getCourseId());
             } catch (\Exception $e) {}
         }

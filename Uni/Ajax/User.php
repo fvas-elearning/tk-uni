@@ -27,7 +27,7 @@ class User
             if (trim($filter['keywords']) == '*') {    // Keep wildcard char as an undocumented feature for now
                 $filter['keywords'] = '';
             }
-            $users = $config->getUserMapper()->findFiltered($filter, \Tk\Db\Tool::create('a.name', 25))->toArray();
+            $users = $config->getUserMapper()->findFiltered($filter, \Tk\Db\Tool::create('a.name_first DESC', 50))->toArray();
             /** @var \Uni\Db\User $user */
             foreach ($users as $user) {
                 $u = new \stdClass();

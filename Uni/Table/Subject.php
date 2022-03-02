@@ -12,6 +12,7 @@ use Tk\Table\Cell\Checkbox;
 use Tk\Table\Cell\Date;
 use Tk\Table\Cell\Email;
 use Tk\Table\Cell\Text;
+use Uni\Db\Permission;
 use Uni\TableIface;
 
 /**
@@ -55,6 +56,14 @@ class Subject extends TableIface
                 $value = $course->getName();
             return $value;
         });
+        $this->appendCell(new Text('enrolled'))->addOnPropertyValue(function ($cell, $obj, $value) {
+            $filter = array('subjectId' => $obj->getId());
+            $filter['type'] = array(\Uni\Db\User::TYPE_STUDENT);
+            $list = $this->getConfig()->getUserMapper()->findFiltered($filter, Tool::create('nameFirst'));
+            $value = $list->count();
+            return $value;
+        });
+
         $this->appendCell(new Email('email'));
         $this->appendCell(Date::createDate('dateStart', \Tk\Date::FORMAT_ISO_DATE));
         $this->appendCell(Date::createDate('dateEnd', \Tk\Date::FORMAT_ISO_DATE));
@@ -69,7 +78,9 @@ class Subject extends TableIface
 
         // Actions
         $this->appendAction(\Tk\Table\Action\ColumnSelect::create()->setUnselected(array('notify', 'publish', 'active', 'created')));
-        $this->appendAction(Delete::create());
+        if ($this->getAuthUser()->hasPermission(Permission::MANAGE_SUBJECT))
+            $this->appendAction(Delete::create());
+
         $this->appendAction(Csv::create());
 
         return $this;

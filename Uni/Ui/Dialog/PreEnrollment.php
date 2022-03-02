@@ -42,20 +42,20 @@ class PreEnrollment extends \Tk\Ui\Dialog\Dialog
     public function execute()
     {
         $request = $this->getRequest();
+        $config = $this->getConfig();
+
+        $this->subject = $this->getConfig()->getSubject();
+        if ($request->get('subjectId'))
+            $this->subject = $config->getSubjectMapper()->find($request->get('subjectId'));
+        if (!$this->subject) {
+            throw new \Tk\Exception('Invalid subject details');
+        }
+        
         if (!$request->has('enroll')) {
             return;
         }
-        $config = \Uni\Config::getInstance();
-
-        $this->subject = \Uni\Config::getInstance()->getSubject();
-        if ($request->get('subjectId'))
-            $this->subject = $config->getSubjectMapper()->find($request->get('subjectId'));
-
-        if (!$this->subject)
-            throw new \Tk\Exception('Invalid subject details');
 
         $list = array();
-
         // Check file list
         if ($request->getUploadedFile('csvFile') && $request->getUploadedFile('csvFile')->getError() == \UPLOAD_ERR_OK) {
             $file = $request->getUploadedFile('csvFile');
@@ -108,14 +108,20 @@ class PreEnrollment extends \Tk\Ui\Dialog\Dialog
                 if (!$user) $user = $config->getUserMapper()->findByUsername($username, $this->subject->institutionId);
                 if (!$user) $user = $config->getUserMapper()->findFiltered(array('institutionId' => $this->subject->institutionId, 'uid' => $uid))->current();
                 if ($user) {
-                    $config->getSubjectMapper()->addUser($this->subject->getId(), $user->getId());
+                    if ($user->isStudent()) {
+                        $config->getSubjectMapper()->addUser($this->subject->getId(), $user->getId());
+                        $user->setActive(true);
+                    } else if ($user->isStaff()) {
+                        $config->getCourseMapper()->addUser($this->subject->getCourseId(), $user->getId());
+                        $user->setActive(true);
+                    }
+                    $user->save();
                 }
                 $success[] = $i . ' - Added ' . $email . ' to the subject enrollment list';
             } else {
                 $info[] = $i . ' - User ' . $email . ' already enrolled, nothing done.';
             }
         }
-
         if (count($info)) {
             \Tk\Alert::addInfo(count($info) . ' records already enrolled and ignored.');
         }
@@ -138,10 +144,10 @@ class PreEnrollment extends \Tk\Ui\Dialog\Dialog
     {
         $list = array();
         $row = 1;
-
         while (($data = fgetcsv($stream, 1000, ',')) !== FALSE) {
             $num = count($data);
             $list[$row] = array('email' => '', 'uid' => '', 'username' => '');
+            // TODO: this line is not working, I think we need to remove whitespaces before checking??
             if (in_array('uid', $data) || in_array('email', $data) || in_array('username', $data)) continue;
             for ($c=0; $c < $num; $c++) {
                 if (filter_var($data[$c], FILTER_VALIDATE_EMAIL)) {
@@ -149,7 +155,8 @@ class PreEnrollment extends \Tk\Ui\Dialog\Dialog
                 } else if (preg_match('/^[0-9]+$/', $data[$c])) {
                     $list[$row]['uid'] = $data[$c];
                 } else if (!preg_match('/.+@.+/', $data[$c])) {
-                    $list[$row]['username'] = $data[$c];
+                    //$list[$row]['username'] = $data[$c];
+                    $list[$row]['username'] = strtolower($data[$c]);
                 }
             }
             $row++;
@@ -169,24 +176,28 @@ class PreEnrollment extends \Tk\Ui\Dialog\Dialog
 
         $this->setContent($this->makeBodyHtml());
         $template = parent::show();
-
-
         $js = <<<JS
 jQuery(function($) {
   
   $('.tk-dialog-pre-enrollment').each(function () {
     var dialog = $(this);
-    var enrollBtn = $(dialog.data('enroll-btn'));
-    var enrollForm = $(dialog.data('enroll-form'));
+    var enrollBtn = $(dialog.data('enrollBtn'));
+    var enrollForm = $(dialog.data('enrollForm'));
     enrollBtn.on('click', function(e) {
-      $('<input type="submit" name="enroll" value="Enroll" />').hide().appendTo(enrollForm).click().remove();
+      //$('<input type="submit" name="enroll" value="Enroll" />').hide().appendTo(enrollForm).click().remove();
+      var btn = enrollForm.find('input[name=enroll]');
+      if (!btn.length) {
+        btn = $('<input type="submit" name="enroll" value="Enroll" />');
+        btn.hide().appendTo(enrollForm);
+      }
+      btn.click();
     });
   });
   
 });
 JS;
         $template->appendJs($js);
-        
+
         return $template;
     }
 
@@ -197,7 +208,7 @@ JS;
      */
     public function makeBodyHtml()
     {
-        $url = htmlentities(\Uni\Config::getInstance()->getRequest()->getTkUri()->toString());
+        $url = htmlentities(\Uni\Config::getInstance()->getRequest()->getTkUri()->set('subjectId', $this->subject->getId())->toString());
         $xhtml = <<<HTML
 <form id="addEnrollmentForm" method="POST" action="$url" enctype="multipart/form-data">
 
@@ -221,7 +232,7 @@ uid,username,email
 123457,staff1,staff2@uni.edu.au
 </pre></p>
 
-  <p><small>NOTE: The uid and username are prefered for LDAP authentication and the email being required for LTI authentication.</small></p>
+  <p><small>NOTE: The uid and username are preffered for LDAP authentication and the email being required for LTI authentication.</small></p>
     
 </form>
 HTML;

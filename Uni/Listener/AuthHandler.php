@@ -3,6 +3,7 @@ namespace Uni\Listener;
 
 use Tk\Event\AuthEvent;
 use Tk\Auth\AuthEvents;
+use Uni\Db\Permission;
 
 /**
  * @author Michael Mifsud <info@tropotek.com>
@@ -19,6 +20,8 @@ class AuthHandler extends \Bs\Listener\AuthHandler
      */
     public function onLoginProcess(\Tk\Event\AuthEvent $event)
     {
+        $adminEmail = $this->getConfig()->getAdminEmailMsg();
+
         if ($event->getAdapter() instanceof \Tk\Auth\Adapter\Ldap) {
             /** @var \Tk\Auth\Adapter\Ldap $adapter */
             $adapter = $event->getAdapter();
@@ -37,24 +40,25 @@ class AuthHandler extends \Bs\Listener\AuthHandler
 
                     if (!$user) {   // Error out if no user
                         $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID,
-                                $adapter->get('username'), 'Invalid username. Please contact your administrator to setup an account.'));
+                                $adapter->get('username'),
+                            sprintf('Invalid username. Please contact %s to setup an account.', $adminEmail)));
                         return;
                     }
 
 //                    if (!$user) { // Create a user record if none exists
 //
 //                        if (!$config->get('auth.ldap.auto.account')) {
-//                            $msg = sprintf('Please contact your site administrator to enable your user account. Please provide the following details' .
-//                                "\nusername: %s\nUID: %s\nEmail: %s", $adapter->get('username'), $uid, $email);
+//                            $msg = sprintf('Please contact %s to enable your user account. Please provide the following details' .
+//                                "\nusername: %s\nUID: %s\nEmail: %s", $adminEmail, $adapter->get('username'), $uid, $email);
 //                            $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID, $adapter->get('username'), $msg));
 //                        }
 //
-//                        $role = 'student';
+//                        $type = 'student';
 //                        if (preg_match('/(staff|student)/', strtolower($ldapData[0]['auedupersontype'][0]), $reg)) {
-//                            if ($reg[1] == 'staff') $role = 'staff';
+//                            if ($reg[1] == 'staff') $type = 'staff';
 //                        }
 //
-//                        if ($role == 'student') {
+//                        if ($type == 'student') {
 //                            // To check if a user is pre-enrolled get an array of uid and emails for a user
 //                            $isPreEnrolled = $config->getSubjectMapper()->isPreEnrolled($config->getInstitutionId(),
 //                                array_merge($ldapData[0]['mail'], $ldapData[0]['mailalternateaddress']),
@@ -62,18 +66,17 @@ class AuthHandler extends \Bs\Listener\AuthHandler
 //                            );
 //
 //                            if (!$isPreEnrolled) {      // Only create users accounts for enrolled students
-//                                $msg = sprintf('We cannot find any enrolled subjects. Please contact your coordinator.' .
+//                                $msg = sprintf(sprintf('We cannot find any enrolled subjects. Please contact %s.', $adminEmail) .
 //                                    "\nusername: %s\nUID: %s\nEmail: %s", $adapter->get('username'), $uid, $email);
 //                                $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID, $adapter->get('username'), $msg));
 //                                return;
 //                            }
 //
 //                            $userData = array(
-//                                'type' => 'ldap',
-//                                'roleId' => \Uni\Db\Role::getDefaultRoleId($role),
+//                                'authType' => 'ldap',
 //                                'institutionId' => $config->getInstitutionId(),
 //                                'username' => $adapter->get('username'),
-//                                'role' => $role,
+//                                'type' => $type,
 //                                'active' => true,
 //                                'email' => $email,
 //                                'name' => $ldapData[0]['displayname'][0],
@@ -89,14 +92,9 @@ class AuthHandler extends \Bs\Listener\AuthHandler
 //                                } catch (\Exception $e) {
 //                                    \Tk\Log::info($e->__toString());
 //                                }
-//                            } else {
-//                                $user->save();
-//                                // Save the last ldap data for reference
-//                                $user->getData()->set('ldap.data', json_encode($ldapData, \JSON_PRETTY_PRINT));
-//                                $user->getData()->save();
 //                            }
 //                        } else {
-//                            $msg = sprintf('Staff members can contact the site administrator to request access');
+//                            $msg = sprintf('Staff members can contact %s to request access', $adminEmail);
 //                            $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID,
 //                                $adapter->get('username'), $msg));
 //                            return;
@@ -108,10 +106,21 @@ class AuthHandler extends \Bs\Listener\AuthHandler
                             $user->setUid($ldapData[0]['auedupersonid'][0]);
                         if (!$user->getName() && !empty($ldapData[0]['displayname'][0]))
                             $user->setName($ldapData[0]['displayname'][0]);
-                        // TODO: update this to if !$user->email later once all emails are changed over
                         if ($email)
                             $user->setEmail($email);
+
+                        // TODO: should we bother doing this, is a small security risk???
                         $user->setNewPassword($adapter->get('password'));
+
+                        // Note: Only students seem to have this data...
+                        if (!empty($ldapData[0]['auedupersonlibrarybarcodenumber'][0])) {
+                            $user->getData()->set('barcode', $ldapData[0]['auedupersonlibrarybarcodenumber'][0]);
+                        }
+                        if (!$user->getId()) {
+                            $user->save();
+                            $user->addPermission($this->getConfig()->getPermission()->getDefaultUserPermissions($user->getType()));
+                            //$user->addPermission(\Uni\Db\Permission::getDefaultPermissionList($user->getType()));
+                        }
                         $user->save();
 
                         if (method_exists($user, 'getData')) {
@@ -130,74 +139,114 @@ class AuthHandler extends \Bs\Listener\AuthHandler
         }
 
 
-        // TODO: This may need further work, getting a nested session save issue..
-        // There is an issue here with going from LDAP and LTI
-        //  LTI we only have their name email, however with LDAP the email is their username one GGGRRRR!!
-        // EG:
-        //  LTI: michael.mifsud@unimelb...
-        //  LDAP: mifsudm@unimelb....
-
+        // LTI Authentication
         if ($event->getAdapter() instanceof \Lti\Auth\LtiAdapter) {
+            $config = \Uni\Config::getInstance();
+
             /** @var \Lti\Auth\LtiAdapter $adapter */
             $adapter = $event->getAdapter();
             $userData = $adapter->get('userData');
-            $config = \Uni\Config::getInstance();
-            $ltiData = $adapter->get('ltiData');
+            $subjectData = $adapter->get('subjectData');
+            $ltiData = $adapter->getLaunchData();
 
+            // Setup/Find User and log them in
             $user = $config->getUserMapper()->findByUsername($adapter->get('username'), $adapter->getInstitution()->getId());
             if (!$user)
                 $user = $config->getUserMapper()->findByEmail($userData['email'], $adapter->getInstitution()->getId());
-
-            if (!$user) {   // Error out if no user
-                $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID,
-                    $userData['username'], 'Invalid username. Please contact your administrator to setup an account.'));
-                return;
-            }
-//            if (!$user) {   // Create the new user account
-//                // optional to check the pre-enrollment list before creation
-//                $isPreEnrolled = \Uni\Db\Subject::isPreEnrolled($adapter->getInstitution()->getId(), array($userData['email']) );
-//                if (!$isPreEnrolled) {  // Only create users accounts for enrolled students
-//                    return;
-//                }
-//                $user = $config->createUser();
-//                $user->setRoleId(\Uni\Db\Role::DEFAULT_TYPE_STUDENT);
-//                if ($userData['role'] == 'staff') {
-//                    $user->setRoleId(\Uni\Db\Role::DEFAULT_TYPE_STAFF);
-//                }
-//                $config->getUserMapper()->mapForm($userData, $user);
-//                $user->save();
-//                $adapter->setUser($user);
+//            // Error out if no user
+//            if (!$user) {
+//                $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID,
+//                    $userData['username'], sprintf('Invalid username. Please contact %s to setup an account.', $adminEmail)));
+//                return;
 //            }
+            // Create the new user account
+            if (!$user) {
+                $user = $config->createUser();
+                $config->getUserMapper()->mapForm($userData, $user);
+                $user->save();
 
-            vd($ltiData);
+                $user->addPermission($this->getConfig()->getPermission()->getDefaultUserPermissions($user->getType()));
+                //$user->addPermission(\Uni\Db\Permission::getDefaultPermissionList($user->getType()));
+                $adapter->set('user', $user);
+            }
+            if ($user) {
 
-            $subjectData = $adapter->get('subjectData');
-            $subject = $config->getSubjectMapper()->find($subjectData['id']);
-            if (!$subject) {
-                $subject = $config->getSubjectMapper()->findByCode($subjectData['code'], $adapter->getInstitution()->getId());
+                if (!$user->getEmail())
+                    $user->setEmail($userData['email']);
+                if (!$user->getName())
+                    $user->setName($userData['name']);
+                if (!$user->getImage() && !empty($userData['image']))
+                    $user->setImage($userData['image']);
+
+                // Setup/Find Subject/Course
+                $subject = $config->getSubjectMapper()->findFiltered(
+                    array('code' => $subjectData['subjectCode'], 'institutionId' => $adapter->getInstitution()->getId())
+                )->current();
+                if (!empty($subjectData['subjectId'])) {
+                    $s = $config->getSubjectMapper()->find($subjectData['subjectId']);
+                    if ($s) $subject = $s;
+                }
+
+                if (!$subject) {
+                    if ($user->isStaff()) {
+                        $course = $config->getCourseMapper()->findFiltered(
+                            array('code' => $subjectData['courseCode'], 'institutionId' => $adapter->getInstitution()->getId())
+                        )->current();
+                        if (!$course) {
+                            // Create a new Course and Subject here if needed
+                            $course = $config->createCourse();
+                            $course->setInstitutionId($adapter->getInstitution()->getId());
+                            $course->setName($subjectData['name']);
+                            $course->setEmail($subjectData['email']);
+                            $course->setCode($subjectData['courseCode']);
+                            if ($user->isCoordinator())
+                                $course->setCoordinatorId($user->getId());
+                            $course->save();
+                            $subjectData['isNewCourse'] = true;
+                        }
+
+                        // Subject
+                        $subject = $config->createSubject();
+                        $config->getSubjectMapper()->mapForm($subjectData, $subject);
+                        if ($course)
+                            $subject->setCourseId($course->getId());
+                        $subject->save();
+                        $subjectData['isNewSubject'] = true;
+                        $adapter->set('subject', $subject);
+                    } else {
+                        throw new \Tk\Exception('Subject ['.$subjectData['subjectCode'].'] not available, Please contact the subject coordinator.');
+                    }
+                }
+
+                if ($subject) {
+                    $config->getSession()->set('lti.subjectId', $subject->getId());   // Limit the dashboard to one subject for LTI logins
+                    $event->setRedirect(\Uni\Uri::createSubjectUrl('/index.html', $subject, $user));
+
+                    // Add user to the subject if not already enrolled
+                    if (!$config->getSubjectMapper()->hasUser($subject->getId(), $user->getId())) {
+                        if ($user->isStudent())
+                            $config->getSubjectMapper()->addUser($subject->getId(), $user->getId());
+                        if ($user->isStaff())
+                            $config->getCourseMapper()->addUser($subject->getCourseId(), $user->getId());
+                    }
+                    // (optional) to check the pre-enrollment, if not available fail authentication
+//                    $isPreEnrolled = $config->getSubjectMapper()->isPreEnrolled($adapter->getInstitution()->getId(), array($user->getEmail()) );
+//                    if (!$isPreEnrolled) {  // Only create users accounts for enrolled students
+//                        $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::FAILURE_CREDENTIAL_INVALID,
+//                            $userData['username'], sprintf('You are not enrolled. Please contact %s to setup your account.', $adminEmail)));
+//                        return;
+//                    }
+                }
+
+                $user->save();
+                if ($ltiData && method_exists($user, 'getData')) {
+                    $data = $user->getData();
+                    $data->set('lti.last.login', json_encode($ltiData));
+                    $data->save();
+                }
             }
 
-
-            if (!$subject) {
-                throw new \Tk\Exception('Subject ['.$subjectData['code'].'] not available, Please contact the subject coordinator.');
-
-                // Create a new subject here if needed
-//                $subject = $config->createSubject();
-//                $config->getSubjectMapper()->mapForm($subjectData, $subject);
-//                $subject->save();
-//                $adapter->setSubject($subject);
-//                $config->getSubjectMapper()->addUser($subject->getId(), $user->getId());
-            } else {
-                $event->setRedirect(\Uni\Uri::createSubjectUrl('/index.html', $subject));
-            }
-            $config->getSession()->set('lti.subjectId', $subject->getId());   // Limit the dashboard to one subject for LTI logins
             $config->getSession()->set('auth.password.access', false);
-
-            // Add user to the subject if not already enrolled as they must be enrolled as LMS says so.... ;-p
-            if (!$config->getSubjectMapper()->hasUser($subject->getId(), $user->getId())) {
-                $config->getSubjectMapper()->addUser($subject->getId(), $user->getId());
-            }
-
             $event->setResult(new \Tk\Auth\Result(\Tk\Auth\Result::SUCCESS, $config->getUserIdentity($user)));
         }
 
@@ -274,6 +323,7 @@ class AuthHandler extends \Bs\Listener\AuthHandler
 
         if (!$config->getMasqueradeHandler()->isMasquerading()) {
             \Tk\Log::warning('Destroying Session');
+            //$this->getSession()->remove('isLti');
             $config->getSession()->destroy();
         };
     }

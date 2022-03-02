@@ -13,12 +13,23 @@ class User extends \Bs\Db\User implements UserIface
 {
     use InstitutionTrait;
 
+    /**
+     *
+     */
+    const TYPE_CLIENT           = 'client';
+    /**
+     *
+     */
+    const TYPE_STAFF            = 'staff';
+    /**
+     *
+     */
+    const TYPE_STUDENT          = 'student';
 
     /**
      * @var int
      */
     public $institutionId = 0;
-
 
 
     /**
@@ -68,10 +79,44 @@ class User extends \Bs\Db\User implements UserIface
                 if (!$this->_institution && $this->isClient()) {
                     $this->_institution = $this->getConfig()->getInstitutionMapper()->findByUserId($this->getId());
                 }
-            } catch (\Exception $e) {
-            }
+            } catch (\Exception $e) { }
         }
         return $this->_institution;
+    }
+
+
+
+    /**
+     * return true if the user is a lecturer OR a coordinator
+     * @return boolean
+     */
+    public function isLearner()
+    {
+        return $this->hasPermission(array(Permission::IS_LECTURER, Permission::IS_COORDINATOR));
+    }
+
+    /**
+     * @return boolean
+     */
+    public function isCoordinator()
+    {
+        return $this->hasPermission(Permission::IS_COORDINATOR);
+    }
+
+    /**
+     * @return boolean
+     */
+    public function isLecturer()
+    {
+        return $this->hasPermission(Permission::IS_LECTURER);
+    }
+
+    /**
+     * @return boolean
+     */
+    public function isMentor()
+    {
+        return $this->hasPermission(Permission::IS_MENTOR);
     }
 
 
@@ -80,23 +125,7 @@ class User extends \Bs\Db\User implements UserIface
      */
     public function isClient()
     {
-        return $this->hasPermission(Permission::TYPE_CLIENT);
-    }
-
-    /**
-     * @return boolean
-     */
-    public function isCoordinator()
-    {
-        return $this->hasPermission(Permission::TYPE_COORDINATOR);
-    }
-
-    /**
-     * @return boolean
-     */
-    public function isLecturer()
-    {
-        return $this->hasPermission(Permission::TYPE_LECTURER);
+        return $this->getType() == self::TYPE_CLIENT;
     }
 
     /**
@@ -104,7 +133,7 @@ class User extends \Bs\Db\User implements UserIface
      */
     public function isStaff()
     {
-        return $this->hasPermission(Permission::TYPE_STAFF);
+        return $this->getType() == self::TYPE_STAFF;
     }
 
     /**
@@ -112,7 +141,7 @@ class User extends \Bs\Db\User implements UserIface
      */
     public function isStudent()
     {
-        return $this->hasPermission(Permission::TYPE_STUDENT);
+        return $this->getType() == self::TYPE_STUDENT;
     }
 
     /**
@@ -160,19 +189,12 @@ class User extends \Bs\Db\User implements UserIface
         $errors = array();
         $usermap = $this->getConfig()->getUserMapper();
 
-        if (!$this->getInstitutionId() && !$this->getRole()->hasPermission(array(Permission::TYPE_ADMIN, Permission::TYPE_CLIENT))) {
+        if (!$this->getInstitutionId() && !$this->isAdmin() && !$this->isClient()) {
             $errors['institutionId'] = 'Invalid field institutionId value';
         }
 
-        if (!$this->getRoleId()) {
-            $errors['roleId'] = 'Invalid field role value';
-        } else {
-            try {
-                $role = $this->getRole();
-                if (!$role) throw new \Tk\Exception('Please select a valid role.');
-            } catch (\Exception $e) {
-                $errors['roleId'] = $e->getMessage();
-            }
+        if (!$this->getType()) {
+            $errors['type'] = 'Cannot save a Guest user record.';
         }
 
         if (!$this->getUsername()) {
@@ -193,6 +215,11 @@ class User extends \Bs\Db\User implements UserIface
         }
         if ($this->getConfig()->get('system.auth.email.unique') && $this->getEmail()) {
             $dup = $usermap->findByEmail($this->getEmail(), $this->getInstitutionId());
+            $dup = $usermap->findFiltered(array(
+                'email' => $this->getEmail(),
+                'institutionId' => $this->getInstitutionId(),
+                'type' => $this->getType()
+            ))->current();
             if ($dup && $dup->getId() != $this->getId()) {
                 $errors['email'] = 'This email is already in use';
             }

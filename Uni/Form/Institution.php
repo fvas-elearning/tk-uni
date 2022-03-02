@@ -4,6 +4,7 @@ namespace Uni\Form;
 use Tk\Form\Field;
 use Tk\Form\Event;
 use Tk\Form;
+use Tk\Str;
 
 /**
  * Example:
@@ -33,14 +34,16 @@ class Institution extends \Uni\FormIface
         $this->appendField(new Field\Input('name'))->setRequired(true)->setTabGroup($tab);
 
 
+        $field = $this->appendField(new Field\Input('email'))->setRequired(true)->setTabGroup($tab);
+        if (!$this->getAuthUser()->isAdmin()) {
+            $field->setDisabled(true);
+            $field->setNotes('Please contact site administrator to change email.');
+        }
         if ($this->getAuthUser()->isAdmin() || $this->getAuthUser()->isClient()) {
             $field = $this->appendField(new Field\Input('username'))->setRequired(true)->setTabGroup($tab);
             if (!$this->getAuthUser()->isAdmin()) {
                 $field->setDisabled(true);
-            }
-            $field = $this->appendField(new Field\Input('email'))->setRequired(true)->setTabGroup($tab);
-            if (!$this->getAuthUser()->isAdmin()) {
-                $field->setDisabled(true);
+                $field->setNotes('Please contact site administrator to change username.');
             }
 
             $insUrl = \Tk\Uri::create('/inst/'.$this->getInstitution()->getHash().'/login.html');
@@ -50,6 +53,8 @@ class Institution extends \Uni\FormIface
             $this->appendField(new Field\Input('domain'))->setTabGroup($tab)
                 ->setNotes('Your Institution login URL is: <a href="'.$insUrlStr.'">'.$insUrlStr.'</a>')
                 ->setAttr('placeholder', $insUrl->getHost());
+        } else {
+
         }
         $this->appendField(new Field\Input('phone'))->setTabGroup($tab);
 
@@ -142,12 +147,12 @@ class Institution extends \Uni\FormIface
 
         /** @var \Tk\Form\Field\File $logo */
         $logo = $form->getField('logo');
-        if ($logo->hasFile() && !preg_match('/\.(gif|jpe?g|png)$/i', $logo->getValue())) {
+        if ($logo && $logo->hasFile() && !preg_match('/\.(gif|jpe?g|png)$/i', $logo->getValue())) {
             $form->addFieldError('logo', 'Please Select a valid image file. (jpg, png, gif only)');
         }
         /** @var \Tk\Form\Field\File $feature */
         $feature = $form->getField('feature');
-        if ($feature->hasFile() && !preg_match('/\.(gif|jpe?g|png)$/i', $feature->getValue())) {
+        if ($feature && $feature->hasFile() && !preg_match('/\.(gif|jpe?g|png)$/i', $feature->getValue())) {
             $form->addFieldError('feature', 'Please Select a valid image file. (jpg, png, gif only)');
         }
 
@@ -166,21 +171,25 @@ class Institution extends \Uni\FormIface
             return;
         }
 
-        $logo->saveFile();
-        // resize the image if needed
-        if ($logo->hasFile()) {
-            $fullPath = $this->getConfig()->getDataPath() . $this->getInstitution()->logo;
-            \Tk\Image::create($fullPath)->bestFit(256, 256)->save();
+        if ($logo) {
+            $logo->saveFile();
+            // resize the image if needed
+            if ($logo->hasFile()) {
+                $fullPath = $this->getConfig()->getDataPath() . $this->getInstitution()->logo;
+                \Tk\Image::create($fullPath)->bestFit(256, 256)->save();
+            }
+        }
+        if ($feature) {
+            $feature->saveFile();
+            // resize the image if needed
+            if ($feature->hasFile()) {
+                $fullPath = $this->getConfig()->getDataPath() . $this->getInstitution()->feature;
+                \Tk\Image::create($fullPath)->bestFit(256, 256)->save();
+            }
         }
 
-        $feature->saveFile();
-        // resize the image if needed
-        if ($feature->hasFile()) {
-            $fullPath = $this->getConfig()->getDataPath() . $this->getInstitution()->feature;
-            \Tk\Image::create($fullPath)->bestFit(256, 256)->save();
-        }
-
-        $this->getInstitution()->name = $this->getInstitution()->getName();
+        $this->getInstitution()->setName($this->getInstitution()->getName());
+        $this->getInstitution()->setDescription(Str::stripStyles($this->getInstitution()->getDescription()));
         $this->getInstitution()->getUser()->save();
 
         // Hash the password correctly

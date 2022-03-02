@@ -10,10 +10,8 @@ namespace Uni;
 class Dispatch extends \Bs\Dispatch
 {
 
-
     /**
-     * @throws \Tk\Db\Exception
-     * @throws \Tk\Exception
+     * @throws \Exception
      */
     public function init()
     {
@@ -22,6 +20,8 @@ class Dispatch extends \Bs\Dispatch
         $dispatcher = $this->getDispatcher();
 
         $dispatcher->addSubscriber(new \Uni\Listener\InstitutionHandler());
+        $dispatcher->addSubscriber(new \Uni\Listener\UserLogHandler());
+        $dispatcher->addSubscriber(new \Uni\Listener\MentorUpdateHandler());
 
     }
 

@@ -2,6 +2,10 @@
 namespace Uni\Controller\User;
 
 
+use Tk\Ui\Link;
+use Uni\Db\Permission;
+use Uni\Db\User;
+
 /**
  * @author Michael Mifsud <info@tropotek.com>
  * @link http://www.tropotek.com/
@@ -16,10 +20,15 @@ class Manager extends \Uni\Controller\AdminManagerIface
     protected $editUrl = null;
 
     /**
-     * Setup the controller to work with users of this role
+     * Setup the controller to work with users of this type
      * @var string
      */
-    protected $targetRole = '';
+    protected $targetType = '';
+
+    /**
+     * @var \Uni\Ui\Dialog\ImportStudents
+     */
+    protected $importDialog = null;
 
 
     /**
@@ -29,16 +38,28 @@ class Manager extends \Uni\Controller\AdminManagerIface
     public function __construct()
     {
         $this->setPageTitle('User Manager');
+
+        if ($this->getAuthUser()->isClient()) {
+            $this->getConfig()->resetCrumbs();
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getTargetType(): string
+    {
+        return $this->targetType;
     }
 
     /**
      * @param \Tk\Request $request
-     * @param string $targetRole
+     * @param string $targetType
      * @throws \Exception
      */
-    public function doDefaultRole(\Tk\Request $request, $targetRole)
+    public function doDefaultType(\Tk\Request $request, $targetType)
     {
-        $this->targetRole = $targetRole;
+        $this->targetType = $targetType;
         $this->doDefault($request);
     }
 
@@ -48,42 +69,56 @@ class Manager extends \Uni\Controller\AdminManagerIface
      */
     public function doDefault(\Tk\Request $request)
     {
-        switch($this->targetRole) {
-            case \Uni\Db\Role::TYPE_ADMIN:
+        switch($this->getTargetType()) {
+            case \Uni\Db\User::TYPE_ADMIN:
                 $this->setPageTitle('Admin Users');
                 break;
-            case \Uni\Db\Role::TYPE_COORDINATOR:
+            case \Uni\Db\User::TYPE_STAFF:
                 $this->setPageTitle('Staff Manager');
                 break;
-            case \Uni\Db\Role::TYPE_STUDENT:
+            case \Uni\Db\User::TYPE_STUDENT:
                 $this->setPageTitle('Student Manager');
                 break;
         }
 
         if (!$this->editUrl) {
-            $this->editUrl = \Uni\Uri::createHomeUrl('/'.$this->targetRole.'UserEdit.html');
+            $this->editUrl = \Uni\Uri::createHomeUrl('/'.$this->getTargetType().'UserEdit.html');
             if ($this->getConfig()->isSubjectUrl()) {
-                $this->editUrl = \Uni\Uri::createSubjectUrl('/'.$this->targetRole.'UserEdit.html');
+                $this->editUrl = \Uni\Uri::createSubjectUrl('/'.$this->getTargetType().'UserEdit.html');
             }
         }
 
-        $this->setTable(\Uni\Table\User::create()->setEditUrl($this->editUrl));
+
+        // Setup import students dialog
+        if ($this->getConfig()->isSubjectUrl() && ($this->getTargetType() == User::TYPE_STUDENT && $this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT))) {
+            $this->importDialog = new \Uni\Ui\Dialog\ImportStudents('Import Users To this Subject');
+            $this->importDialog->execute();
+        }
+
+
+        $this->setTable($this->createTable());
         if (!$this->getAuthUser()->isStudent())
-            $this->getTable()->getActionCell()->removeButton('Masquerade');
+            $this->getTable()->getActionCell()->removeButton($this->getTable()->getActionCell()->findButtonByName('Masquerade'));
+
+        $this->initTable();
         $this->getTable()->init();
+        $this->postInitTable();
 
 
         $filter = array();
-        if ($this->getAuthUser()->institutionId) {
-            $filter['institutionId'] = $this->getAuthUser()->institutionId;
+        if ($this->getAuthUser()->getInstitutionId()) {
+            $filter['institutionId'] = $this->getAuthUser()->getInstitutionId();
         } else if ($this->getAuthUser()->isClient()) {
             $filter['institutionId'] = $this->getConfig()->getInstitutionId();
         }
         if (empty($filter['type'])) {
-            $filter['type'] = $this->targetRole;
+            $filter['type'] = $this->getTargetType();
         }
         if (($this->getConfig()->isSubjectUrl() || $request->has('subjectId')) && $this->getConfig()->getSubjectId()) {
-            $filter['subjectId'] = $this->getConfig()->getSubjectId();
+            if ($this->getTargetType() == User::TYPE_STUDENT)
+                $filter['subjectId'] = $this->getConfig()->getSubjectId();
+            else if ($this->getTargetType() == User::TYPE_STAFF)
+                $filter['courseId'] = $this->getConfig()->getCourseId();
         }
         $this->getTable()->setList($this->getTable()->findList($filter));
 
@@ -91,13 +126,43 @@ class Manager extends \Uni\Controller\AdminManagerIface
     }
 
     /**
+     * @return \Bs\TableIface|\Tk\Table|\Uni\Table\User
+     */
+    public function createTable()
+    {
+        return \Uni\Table\User::create()->setEditUrl($this->editUrl)->setTargetType($this->getTargetType());
+    }
+
+
+    public function initTable()
+    {
+        // Do any override inits here
+    }
+
+
+    public function postInitTable()
+    {
+        // Do any override inits here
+    }
+
+    /**
      *
      */
     public function initActionPanel()
     {
-        //if (!$this->getConfig()->getSession()->get('auth.password.access')) {
-        if ($this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::TYPE_COORDINATOR) || $this->getConfig()->getAuthUser()->isClient() || $this->getConfig()->getAuthUser()->isAdmin()) {
-            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Create ' . ucfirst($this->targetRole), $this->getTable()->getEditUrl(), 'fa fa-user-plus'));
+        if (
+            ($this->getTargetType() == User::TYPE_STAFF && $this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_STAFF)) ||
+            ($this->getTargetType() == User::TYPE_STUDENT && $this->getConfig()->getAuthUser()->isCoordinator()) ||
+            $this->getConfig()->getAuthUser()->isClient() || $this->getConfig()->getAuthUser()->isAdmin()) {
+            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Create ' . ucfirst($this->getTargetType()), $this->getTable()->getEditUrl(), 'fa fa-user-plus'));
+        }
+        if (!$this->getConfig()->isSubjectUrl() && ($this->getTargetType() == User::TYPE_STAFF && $this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_STAFF))) {
+            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Import Mentor List', \Uni\Uri::createHomeUrl('/mentorImport.html'), 'fa fa-users'));
+        }
+        if ($this->importDialog) {
+            $this->getActionPanel()->append(Link::createBtn('Import Students','#', 'fa fa-user-plus'))
+                ->setAttr('data-toggle', 'modal')->setAttr('data-target', '#'.$this->importDialog->getId())
+                ->setAttr('title', 'Create student accounts and enroll into this subject');
         }
     }
 
@@ -110,6 +175,9 @@ class Manager extends \Uni\Controller\AdminManagerIface
         $template = parent::show();
 
         $template->appendTemplate('table', $this->table->show());
+
+        if ($this->importDialog)
+            $template->appendBodyTemplate($this->importDialog->show());
 
         return $template;
     }

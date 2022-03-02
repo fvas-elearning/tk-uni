@@ -102,17 +102,12 @@ class Enrolled extends \Uni\TableIface
         $this->appendCell(new \Tk\Table\Cell\Text('username'));
         $this->appendCell(new \Tk\Table\Cell\Email('email'));
         $this->appendCell(new \Tk\Table\Cell\Text('uid'));
-        $this->appendCell(new \Tk\Table\Cell\Text('roleId'))->addOnPropertyValue(function ($cell, $obj, $value) {
-            /** @var \Uni\Db\User $obj */
-            if ($obj->getRole())
-                $value = $obj->getRole()->getName();
-            return $value;
-        });
+        $this->appendCell(new \Tk\Table\Cell\Text('type'));
         $this->appendCell(new \Tk\Table\Cell\Boolean('active'));
         $this->appendCell(new \Tk\Table\Cell\Date('created'));
 
         // Actions
-        $this->appendAction(\Tk\Table\Action\Delete::create('delete')->addOnDelete(function (\Tk\Table\Action\Delete $action, $obj) {
+        $this->appendAction(\Tk\Table\Action\Delete::create('delete')->setLabel('Un-enroll')->addOnDelete(function (\Tk\Table\Action\Delete $action, $obj) {
             /** @var \Uni\Db\User $obj */
             $config = \Uni\Config::getInstance();
             $subject = $config->getSubject();
@@ -135,7 +130,7 @@ class Enrolled extends \Uni\TableIface
      */
     public function findList($filter = array(), $tool = null)
     {
-        if (!$tool) $tool = $this->getTool('name');
+        if (!$tool) $tool = $this->getTool('name_first');
         $filter = array_merge($this->getFilterValues(), $filter);
         $list = $this->getConfig()->getUserMapper()->findFiltered($filter, $tool);
         return $list;

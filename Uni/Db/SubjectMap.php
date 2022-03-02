@@ -114,12 +114,13 @@ class SubjectMap extends Mapper
     /**
      * @param array|Filter $filter
      * @param Tool $tool
-     * @return ArrayObject|Subject[]
+     * @return ArrayObject|Subject[]|\Uni\Db\Subject[]
      * @throws \Exception
      */
     public function findFiltered($filter, $tool = null)
     {
-        return $this->selectFromFilter($this->makeQuery(\Tk\Db\Filter::create($filter)), $tool);
+        $list = $this->selectFromFilter($this->makeQuery(\Tk\Db\Filter::create($filter)), $tool);
+        return $list;
     }
 
     /**
@@ -164,7 +165,8 @@ class SubjectMap extends Mapper
         }
 
         if (!empty($filter['courseId'])) {
-            $filter->appendWhere('a.course_id = %s AND ', (int)$filter['courseId']);
+            $w = $this->makeMultiQuery($filter['courseId'], 'a.course_id');
+            if ($w) $filter->appendWhere('(%s) AND ', $w);
         }
 
         if (!empty($filter['excludeCourseId'])) {
@@ -172,13 +174,27 @@ class SubjectMap extends Mapper
         }
 
         if (!empty($filter['userId'])) {
+            $filter['studentId'] = $filter['userId'];
+        }
+        if (!empty($filter['studentId'])) {
             $filter->appendFrom(', subject_has_user k');
-            $filter->appendWhere('a.id = k.subject_id AND k.user_id = %s AND ', (int)$filter['userId']);
+            $filter->appendWhere('a.id = k.subject_id AND ');
+            $w = $this->makeMultiQuery($filter['studentId'], 'k.user_id');
+            if ($w) $filter->appendWhere('(%s) AND ', $w);
         }
 
         if (!empty($filter['staffId'])) {
             $filter->appendFrom(', course_has_user l');
-            $filter->appendWhere('a.course_id = l.course_id AND l.user_id = %s AND ', (int)$filter['staffId']);
+            $filter->appendWhere('a.course_id = l.course_id AND ');
+            $w = $this->makeMultiQuery($filter['staffId'], 'l.user_id');
+            if ($w) $filter->appendWhere('(%s) AND ', $w);
+        }
+
+        if (!empty($filter['mentorId'])) {
+            $filter->appendFrom(', subject_has_user m, user_mentor n');
+            $filter->appendWhere('a.id = m.subject_id AND m.user_id = n.user_id AND ');
+            $w = $this->makeMultiQuery($filter['mentorId'], 'n.mentor_id');
+            if ($w) $filter->appendWhere('(%s) AND ', $w);
         }
 
         if (isset($filter['publish']) && $filter['publish'] !== '' && $filter['publish'] !== null) {
@@ -378,14 +394,23 @@ class SubjectMap extends Mapper
             $toolStr = ' '.$this->getToolSql($tool);
         }
 
-        $stm = $this->getDb()->prepare('SELECT a.subject_id, a.uid, a.email, a.username, b.hash, b.id as \'user_id\', IF(c.subject_id IS NULL,0,1) as enrolled
+//        $stm = $this->getDb()->prepare('SELECT a.subject_id, a.uid, a.email, a.username, b.hash, b.id as \'user_id\', IF(c.subject_id IS NULL,0,1) as enrolled
+//FROM  subject_pre_enrollment a
+//  LEFT JOIN  user b ON (b.email != \'\' AND b.email IS NOT NULL AND b.email = a.email)
+//  LEFT JOIN subject_has_user c ON (b.id = c.user_id AND c.subject_id = ?)
+//WHERE a.subject_id = ? ' . $toolStr);
+//        $stm->execute(array($filter['subjectId'], $filter['subjectId']));
+//        $arr = $stm->fetchAll();
+
+        $sql = sprintf('SELECT a.subject_id, a.uid, a.email, a.username, b.hash, b.id as \'user_id\', IF(c.subject_id IS NULL,0,1) as enrolled
 FROM  subject_pre_enrollment a 
   LEFT JOIN  user b ON (b.email != \'\' AND b.email IS NOT NULL AND b.email = a.email)  
-  LEFT JOIN subject_has_user c ON (b.id = c.user_id AND c.subject_id = ?)
-WHERE a.subject_id = ? ' . $toolStr);
-        $stm->execute(array($filter['subjectId'], $filter['subjectId']));
+  LEFT JOIN subject_has_user c ON (b.id = c.user_id AND c.subject_id = %s)
+WHERE a.subject_id = %s %s', (int)$filter['subjectId'], (int)$filter['subjectId'], $toolStr);
+        $res = $this->getDb()->query($sql);
+        $arr = $res->fetchAll();
 
-        $arr = $stm->fetchAll();
+
         $tool->setFoundRows(count($arr));
         return $arr;
     }
@@ -415,20 +440,24 @@ WHERE a.subject_id = ? ' . $toolStr);
      */
     public function hasPreEnrollment($subjectId, $email = '', $uid = '', $username = '')
     {
+        $rc = 0;
         if ($email) {
             $stm = $this->getDb()->prepare('SELECT * FROM subject_pre_enrollment WHERE subject_id = ? AND email = ?');
             $stm->execute(array($subjectId, $email));
-            if ($stm->rowCount()) return true;
+            $rc = $stm->rowCount();
         }
         if ($uid) {
             $stm = $this->getDb()->prepare('SELECT * FROM subject_pre_enrollment WHERE subject_id = ? AND uid = ?');
             $stm->execute(array($subjectId, $uid));
-            if ($stm->rowCount()) return true;
+            $rc = $stm->rowCount();
         }
         if ($username) {
             $stm = $this->getDb()->prepare('SELECT * FROM subject_pre_enrollment WHERE subject_id = ? AND username = ?');
             $stm->execute(array($subjectId, $username));
-            if ($stm->rowCount()) return true;
+            $rc = $stm->rowCount();
+        }
+        if ($rc) {
+            return true;
         }
         return false;
     }

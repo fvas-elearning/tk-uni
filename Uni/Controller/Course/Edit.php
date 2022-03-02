@@ -4,6 +4,8 @@ namespace Uni\Controller\Course;
 use Bs\Controller\AdminEditIface;
 use Dom\Template;
 use Tk\Request;
+use Tk\Ui\Dialog\AjaxSelect;
+use Uni\Db\Permission;
 use Uni\Table\User;
 use Uni\Uri;
 
@@ -60,6 +62,10 @@ class Edit extends AdminEditIface
      */
     public function doDefault(Request $request)
     {
+        if (!$this->getAuthUser()->hasPermission(Permission::MANAGE_SUBJECT) && !$this->getAuthUser()->isClient()) {
+            \Tk\Alert::addWarning('You do not have permission to edit this resource.');
+            $this->getConfig()->getBackUrl()->redirect();
+        }
         $this->getCourse();
 
         $this->setForm(\Uni\Form\Course::create()->setModel($this->getCourse()));
@@ -71,13 +77,14 @@ class Edit extends AdminEditIface
 
         if ($this->getCourse()->getId()) {
             $this->userTable = \Uni\Table\UserList::create();
-            $this->userTable->setEditUrl(\Uni\Uri::createHomeUrl('/userEdit.html'));
+            $this->userTable->setUserType(\Uni\Db\User::TYPE_STAFF);
+            $this->userTable->setEditUrl(\Uni\Uri::createHomeUrl('/staffUserEdit.html'));
             $this->userTable->setAjaxParams(array(
                 'institutionId' => $this->getConfig()->getInstitutionId(),
                 'active' => 1,
-                'permission' => \Uni\Db\Permission::TYPE_STAFF
+                'permission' => \Uni\Db\Permission::IS_COORDINATOR
             ));
-            $this->userTable->setOnSelect(function (\Uni\Table\UserList $dialog) {
+            $this->userTable->setOnSelect(function (AjaxSelect $dialog) {
                 /** @var User $user */
                 $data = $dialog->getConfig()->getRequest()->all();
                 $course = $dialog->getConfig()->getCourseMapper()->find($dialog->getConfig()->getRequest()->get('courseId'));
@@ -98,7 +105,7 @@ class Edit extends AdminEditIface
             $this->userTable->init();
             $filter = array(
                 'id' => $this->getConfig()->getCourseMapper()->findUsers($this->getCourse()->getId()),
-                'permission' => \Uni\Db\Permission::TYPE_STAFF
+                'permission' => \Uni\Db\Permission::IS_COORDINATOR
             );
             if (count($filter['id']))
                 $this->userTable->setList($this->userTable->findList($filter));
@@ -110,7 +117,7 @@ class Edit extends AdminEditIface
      */
     public function initActionPanel()
     {
-        if ($this->getAuthUser()->isClient() || $this->getAuthUser()->isStaff()) {
+        if ($this->course->getId() && ($this->getAuthUser()->isClient() || $this->getAuthUser()->isStaff())) {
             $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Subjects',
                 \Uni\Uri::createHomeUrl('/subjectManager.html')->set('courseId', $this->course->getId()), 'fa fa-graduation-cap'));
         }

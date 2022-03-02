@@ -87,6 +87,33 @@ class Course extends \Tk\Db\Map\Model implements \Tk\ValidInterface
     }
 
     /**
+     * Generate a course code from a subject code:
+     *   EG:
+     *         Subject Code            Created Course Code
+     *       - VETS30014_2018_SM2   => VETS30014
+     *       - COM_000297           => COM_000297
+     *       - COM_COM_000297       => COM_COM_000297
+     *       - MERGE_2019_271       => MERGE_2019_271
+     *
+     * @param string $subjectCode
+     * @return string
+     */
+    public static function makeCourseCode($subjectCode)
+    {
+        $subjectCode = trim($subjectCode);
+        $courseCode = $subjectCode;
+        if (strstr($subjectCode, '_') !== false) {
+            $courseCode = substr($subjectCode, 0, strpos($subjectCode, '_'));
+        }
+//        if (preg_match('/^(([A-Z]{4})([0-9]{5}))(\S*)/', $subjectCode, $regs)) {
+//            $courseCode = $regs[1];
+//        } else if (preg_match('/^((MERGE)_([0-9]{4}))_([0-9]+)/', $subjectCode, $regs)) {
+//            $courseCode = $regs[1];
+//        }
+        return $courseCode;
+    }
+
+    /**
      * Get the data object
      *
      * @return \Tk\Db\Data
@@ -131,15 +158,17 @@ class Course extends \Tk\Db\Map\Model implements \Tk\ValidInterface
     }
 
     /**
-     * @param \Uni\Db\UserIface $user
+     * @param \Uni\Db\UserIface|int $userId
      * @return Course
      * @throws \Exception
      */
-    public function addUser($user)
+    public function addUser($userId)
     {
-        if (!$user || !$this->getId() || !$user->getRole()->hasPermission(\Uni\Db\Permission::TYPE_STAFF))
+        if ($userId instanceof \Tk\Db\ModelInterface)
+            $userId = $userId->getId();
+        if (!$this->getId())
             throw new \Tk\Exception('Only add staff users to a saved record!');
-        CourseMap::create()->addUser($this->getId(), $user->getId());
+        CourseMap::create()->addUser($this->getId(), $userId);
         return $this;
     }
 

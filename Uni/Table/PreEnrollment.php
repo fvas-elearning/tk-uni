@@ -25,7 +25,7 @@ class PreEnrollment extends \Uni\TableIface
         $this->appendCell(new \Tk\Table\Cell\Text('username'));
         $this->appendCell(new \Tk\Table\Cell\Text('email'));
         $this->appendCell(new \Tk\Table\Cell\Boolean('enrolled'))->setOrderProperty('IF(c.subject_id IS NULL,0,1)')
-            ->setLabel('E')->addOnCellHtml(function ($cell, $obj, $html) {
+            ->setLabel('X')->setHeadTitle('Is Enrolled')->addOnCellHtml(function ($cell, $obj, $html) {
             /** @var $cell \Tk\Table\Cell\Boolean */
             /** @var $obj \StdClass */
             $config = \Uni\Config::getInstance();

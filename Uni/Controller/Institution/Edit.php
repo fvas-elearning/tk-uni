@@ -2,6 +2,8 @@
 namespace Uni\Controller\Institution;
 
 
+use Uni\Db\Permission;
+
 /**
  * @author Michael Mifsud <info@tropotek.com>
  * @link http://www.tropotek.com/
@@ -68,19 +70,17 @@ class Edit extends \Uni\Controller\AdminEditIface
         }
 
         if ($this->getAuthUser()->isClient() || $this->getAuthUser()->isStaff()) {
-            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Plugins',
-                \Uni\Uri::createHomeUrl('/institution/'.$this->getInstitution()->getId().'/plugins.html'), 'fa fa-plug'));
-
+            if ($this->getAuthUser()->hasPermission(Permission::MANAGE_PLUGINS) || $this->getAuthUser()->isClient()) {
+                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Plugins',
+                    \Uni\Uri::createHomeUrl('/institution/' . $this->getInstitution()->getId() . '/plugins.html'), 'fa fa-plug'));
+            }
             $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Staff',
                 \Uni\Uri::createHomeUrl('/staffUserManager.html'), 'fa fa-users'));
-//            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Student',
-//                \Uni\Uri::createHomeUrl('/studentUserManager.html'), 'fa fa-users'));
 
-            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Courses',
-                \Uni\Uri::createHomeUrl('/courseManager.html'), 'fa fa-book'));
-
-//            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Subjects',
-//                \Uni\Uri::createHomeUrl('/subjectManager.html'), 'fa fa-graduation-cap'));
+            if ($this->getAuthUser()->hasPermission(Permission::MANAGE_SUBJECT) || $this->getAuthUser()->isClient()) {
+                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Courses',
+                    \Uni\Uri::createHomeUrl('/courseManager.html'), 'fa fa-book'));
+            }
 
         }
     }

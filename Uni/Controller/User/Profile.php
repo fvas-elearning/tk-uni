@@ -13,7 +13,7 @@ use Uni\Db\Permission;
  * @link http://www.tropotek.com/
  * @license Copyright 2015 Michael Mifsud
  */
-class Profile extends \Bs\Controller\Admin\User\Profile
+class Profile extends \Bs\Controller\User\Profile
 {
 
 
@@ -23,9 +23,9 @@ class Profile extends \Bs\Controller\Admin\User\Profile
      */
     public function doDefault(\Tk\Request $request)
     {
-        $this->init($request);
+        //$this->initForm($request);
+        $this->setForm($this->createForm());
 
-        $this->setForm(\Uni\Form\User::create()->setModel($this->user));
         if ($this->getForm()->getField('active'))
             $this->getForm()->removeField('active');
         if ($this->getForm()->getField('username'))
@@ -34,12 +34,36 @@ class Profile extends \Bs\Controller\Admin\User\Profile
             $this->getForm()->getField('uid')->setAttr('disabled')->addCss('form-control disabled')->removeCss('tk-input-lock');
         if ($this->getForm()->getField('email'))
             $this->getForm()->getField('email')->setAttr('disabled')->addCss('form-control disabled')->removeCss('tk-input-lock');
+
+        if ($this->getForm()->getField('permission')) {
+            $this->getForm()->removeField('permission');
+            $tab = 'Permissions';
+            $list = $this->getConfig()->getPermission()->getAvailablePermissionList($this->getConfig()->getAuthUser()->getType());
+            if (count($list)) {
+                $this->getForm()->appendField(\Tk\Form\Field\CheckboxGroup::createSelect('permission_ro', $list))
+                    ->setLabel('Permission List')->setTabGroup($tab)
+                    ->setValue(array_values($list))->setReadonly()->setDisabled();
+            }
+            if ($this->getConfig()->getAuthUser()->getId()) {
+                $this->getForm()->load(array('permission_ro' => $this->getConfig()->getAuthUser()->getPermissions()));
+            }
+        }
+
         $this->getForm()->removeField('selCourse');
         $this->getForm()->removeField('selSubject');
 
+        $this->initForm($request);
         $this->getForm()->execute();
     }
 
+
+    /**
+     * @return \Uni\Form\User
+     */
+    protected function createForm()
+    {
+        return \Uni\Form\User::create()->setModel($this->getConfig()->getAuthUser());
+    }
 
 
 

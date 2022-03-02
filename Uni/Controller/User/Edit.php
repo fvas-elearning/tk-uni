@@ -2,6 +2,8 @@
 namespace Uni\Controller\User;
 
 
+use Uni\Db\User;
+
 /**
  * @author Michael Mifsud <info@tropotek.com>
  * @link http://www.tropotek.com/
@@ -10,10 +12,10 @@ namespace Uni\Controller\User;
 class Edit extends \Uni\Controller\AdminEditIface
 {
     /**
-     * Setup the controller to work with users of this role
+     * Setup the controller to work with users of this type
      * @var string
      */
-    protected $targetRole = '';
+    protected $targetType = '';
 
     /**
      * @var \Uni\Db\User
@@ -31,12 +33,12 @@ class Edit extends \Uni\Controller\AdminEditIface
 
     /**
      * @param \Tk\Request $request
-     * @param string $targetRole
+     * @param string $targetType
      * @throws \Exception
      */
-    public function doDefaultRole(\Tk\Request $request, $targetRole)
+    public function doDefaultType(\Tk\Request $request, $targetType)
     {
-        $this->targetRole = $targetRole;
+        $this->targetType = $targetType;
         $this->doDefault($request);
     }
 
@@ -46,23 +48,23 @@ class Edit extends \Uni\Controller\AdminEditIface
      */
     public function doDefault(\Tk\Request $request)
     {
-        switch($this->targetRole) {
-            case \Uni\Db\Role::TYPE_ADMIN:
+        switch($this->targetType) {
+            case \Uni\Db\User::TYPE_ADMIN:
                 $this->setPageTitle('Admin Edit');
                 break;
-            case \Uni\Db\Role::TYPE_COORDINATOR:
+            case \Uni\Db\User::TYPE_STAFF:
                 $this->setPageTitle('Staff Edit');
                 break;
-            case \Uni\Db\Role::TYPE_STUDENT:
+            case \Uni\Db\User::TYPE_STUDENT:
                 $this->setPageTitle('Student Edit');
                 break;
         }
 
         $this->user = $this->getConfig()->createUser();
-        if ($this->targetRole != \Uni\Db\Role::TYPE_ADMIN && $this->targetRole != \Uni\Db\Role::TYPE_CLIENT) {
+        if ($this->targetType != \Uni\Db\User::TYPE_ADMIN && $this->targetType != \Uni\Db\User::TYPE_CLIENT) {
             $this->user->setInstitutionId($this->getConfig()->getInstitutionId());
         }
-        $this->user->setRoleId(\Uni\Db\Role::getDefaultRoleId($this->targetRole));
+        $this->user->setType($this->targetType);
 
         if ($request->has('userId')) {
             $this->user = $this->getConfig()->getUserMapper()->find($request->get('userId'));
@@ -81,7 +83,7 @@ class Edit extends \Uni\Controller\AdminEditIface
     public function initForm(\Tk\Request $request)
     {
 
-        if ($this->getAuthUser()->getId() == 1 || !$this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT)) {
+        if (!$this->getAuthUser()->getId() && ($this->getAuthUser()->getId() == 1 || !$this->getConfig()->getAuthUser()->hasPermission(\Uni\Db\Permission::MANAGE_SUBJECT))) {
             $this->getForm()->appendField(new \Tk\Form\Field\Html('username'))->setAttr('disabled')
                 ->addCss('form-control disabled')->setTabGroup('Details');
         }
@@ -93,7 +95,7 @@ class Edit extends \Uni\Controller\AdminEditIface
      */
     protected function createForm()
     {
-        return \Uni\Form\User::create()->setTargetRole($this->targetRole)->setModel($this->user);
+        return \Uni\Form\User::create()->setTargetType($this->targetType)->setModel($this->user);
     }
 
     /**
@@ -101,10 +103,17 @@ class Edit extends \Uni\Controller\AdminEditIface
      */
     public function initActionPanel()
     {
-        if ($this->user->getId() && $this->getConfig()->getMasqueradeHandler()->canMasqueradeAs($this->getAuthUser(), $this->user)) {
-            $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Masquerade',
-                \Uni\Uri::create()->reset()->set(\Uni\Listener\MasqueradeHandler::MSQ, $this->user->getHash()), 'fa fa-user-secret'))
-                ->setAttr('data-confirm', 'You are about to masquerade as the selected user?')->addCss('tk-masquerade');
+        if ($this->user->getId()) {
+            if ($this->getConfig()->getMasqueradeHandler()->canMasqueradeAs($this->getAuthUser(), $this->user)) {
+                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Masquerade',
+                    \Uni\Uri::create()->reset()->set(\Uni\Listener\MasqueradeHandler::MSQ, $this->user->getHash()), 'fa fa-user-secret'))
+                    ->setAttr('data-confirm', 'You are about to masquerade as the selected user?')->addCss('tk-masquerade');
+            }
+
+            if ($this->user->isMentor() && $this->getAuthUser()->hasType(User::TYPE_STAFF, User::TYPE_CLIENT)) {
+                $this->getActionPanel()->append(\Tk\Ui\Link::createBtn('Mentee`s',
+                    \Uni\Uri::createHomeUrl('/mentorList.html')->set('userId', $this->user->getId()), 'fa fa-users'));
+            }
         }
     }
 

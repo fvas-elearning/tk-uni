@@ -3,6 +3,8 @@ namespace Uni\Table;
 
 
 
+use Uni\Db\Permission;
+
 /**
  * @author Mick Mifsud
  * @created 2018-07-24
@@ -35,10 +37,96 @@ class User extends \Bs\Table\User
     public function init()
     {
         parent::init();
-
-        if (!$this->getConfig()->getSubject()) return $this;
-        if (!$this->getAuthUser()->isAdmin() && !$this->getAuthUser()->isClient())
+        if (!$this->getAuthUser()->isAdmin() && !$this->getAuthUser()->isClient() && !$this->getAuthUser()->hasPermission(Permission::MANAGE_STAFF))
             $this->removeAction('delete');
+
+        if ($this->getTargetType() == \Uni\Db\User::TYPE_STUDENT) {
+            if ($this->getAuthUser()->isStaff()) {
+                $this->appendCell(new \Tk\Table\Cell\Text('barcode'), 'uid')
+                    ->addOnPropertyValue(function (\Tk\Table\Cell\Iface $cell, $obj, $value) {
+                        /** @var $obj \Uni\Db\User */
+                        $value = '';
+                        if ($obj->getData()->has('barcode')) {
+                            $value .= $obj->getData()->get('barcode');
+                        }
+                        return $value;
+                    });
+
+            }
+            $this->appendCell(\Tk\Table\Cell\Text::create('mentor'))->setOrderProperty('')
+                ->addOnCellHtml(function (\Tk\Table\Cell\Iface $cell, $obj, $html) {
+                    /** @var $obj \Uni\Db\User */
+                    $html = '';
+                    $idList = $this->getConfig()->getUserMapper()->findMentor($obj->getId());
+                    if (count($idList)) {
+                        $mentors = $this->getConfig()->getUserMapper()->findFiltered(array(
+                            'id' => $idList
+                        ), \Tk\Db\Tool::create('name_first', 5));
+                        foreach ($mentors as $mentor) {
+                            $html .= sprintf('<small>%s</small><br/>', htmlspecialchars($mentor->getName()));
+                        }
+                        $html = '<span>' . preg_replace('/<br\\s*?\\/?>\\s*$/', '', $html) . '</span>';
+                    }
+                    return $html;
+                });
+
+            $this->appendCell(\Tk\Table\Cell\Text::create('subjects'))->setOrderProperty('')
+                ->setLabel('Subject Entries')
+                ->addOnCellHtml(function (\Tk\Table\Cell\Iface $cell, $obj, $html) {
+                    /** @var $obj \Uni\Db\User */
+                    $subjectList = $obj->getConfig()->getSubjectMapper()->findFiltered(array(
+                        'studentId' => $obj->getId(),
+                        'institutionId' => $obj->getInstitutionId()
+                    ), \Tk\Db\Tool::create('dateStart DESC'));
+                    $html = array();
+                    foreach ($subjectList as $subject) {
+                        $html[] = sprintf('<small>%s</small><br/>', htmlspecialchars($subject->getName())
+                        );
+                    }
+                    $html = '<span>'. implode("<br/>\n", $html) . '</span>';
+                    return $html;
+                });
+
+        } else if ($this->getTargetType() == \Uni\Db\User::TYPE_STAFF) {
+            $list = array(
+                'Coordinator' => Permission::IS_COORDINATOR,
+                'Lecturer' => Permission::IS_LECTURER,
+                'Mentor' => Permission::IS_MENTOR
+            );
+            $this->appendFilter(new \Tk\Form\Field\CheckboxSelect('permission', $list));
+
+            $this->appendCell(new \Tk\Table\Cell\Text('role'), 'uid')
+                ->addOnPropertyValue(function (\Tk\Table\Cell\Iface $cell, $obj, $value) {
+                    /** @var $obj \Uni\Db\User */
+                    $value ='';
+                    if ($obj->isCoordinator()) {
+                        $value .= 'Coordinator, ';
+                    } else if ($obj->isLecturer()) {
+                        $value .= 'Lecturer, ';
+                    }
+                    if ($obj->isMentor()) {
+                        $value .= 'Mentor, ';
+                    }
+                    if (!$value) {
+                        $value = 'Staff';
+                    }
+                    return trim($value, ', ');
+                });
+        }
+
+        $arr = array('modified', 'created');
+        if ($this->getAuthUser()->isStaff()) {
+            $arr[] = 'username';
+            $arr[] = 'barcode';
+            $arr[] = 'active';
+            $arr[] = 'mentor';
+            $arr[] = 'subjects';
+        }
+        $this->findAction('columns')->setUnselected($arr);
+
+
+        // For subject urls only
+        if (!$this->getConfig()->isSubjectUrl()) return $this;
 
         $this->findSubjectDialog = new \Tk\Ui\Dialog\AjaxSelect('Migrate Student', \Tk\Uri::create('/ajax/subject/findFiltered.html'));
         //$params = array('ignoreUser' => '1', 'subjectId' => $this->getConfig()->getSubject()->getId());
@@ -71,6 +159,12 @@ class User extends \Bs\Table\User
                     if (!$config->getSubjectMapper()->hasUser($event->get('subjectToId'), $user->getId())) {
                         $config->getSubjectMapper()->addUser($event->get('subjectToId'), $user->getId());
                     }
+                    /** @var \Uni\Db\Subject $subjectTo */
+                    $subjectTo = $config->getSubjectMapper()->find($event->get('subjectToId'));
+                    $sn = '';
+                    if ($subjectTo)
+                        $sn = ' To ' . $subjectTo->getName();
+                    \Tk\Alert::addSuccess($user->getName() . ' Successfully Migrated'.$sn);
                 }
             }
             return \Tk\Uri::create()->reset()->set('subjectId', $config->getSubject()->getId());
@@ -98,9 +192,9 @@ class User extends \Bs\Table\User
                 }
             }
         });
-
+        $eUrl = \Uni\Uri::createSubjectUrl('/')->toString();
         $html = <<<HTML
-<p><small><em>NOTE: To remove users, mark users as in-active or migrate students to a holding subject. To delete a user please contact the site administrator.</em></small></p>
+<p><small><em>NOTE: To remove users, un-enroll the user from the subject from the <a href="$eUrl">Enrollment Manager</a>.</em></small></p>
 HTML;
         $this->getRenderer()->getTemplate()->prependHtml('table', $html);
 

@@ -1,8 +1,9 @@
 <?php
 namespace Uni\Listener;
 
-use Uni\Db\Role;
+use Uni\Db\Permission;
 use Uni\Db\User;
+use Uni\Db\UserIface;
 
 /**
  *
@@ -12,19 +13,6 @@ use Uni\Db\User;
  */
 class MasqueradeHandler extends \Bs\Listener\MasqueradeHandler
 {
-
-    /**
-     * The order of role permissions
-     * @var array
-     */
-    public static $roleOrder = array(
-        Role::TYPE_ADMIN,           // Highest
-        Role::TYPE_CLIENT,
-        Role::TYPE_COORDINATOR,
-        Role::TYPE_LECTURER,
-        Role::TYPE_STAFF,
-        Role::TYPE_STUDENT          // Lowest
-    );
 
     /**
      * Add any headers to the final response.
@@ -66,14 +54,25 @@ class MasqueradeHandler extends \Bs\Listener\MasqueradeHandler
     /**
      * Check if this user can masquerade as the supplied msqUser
      *
-     * @param User|\Uni\Db\UserIface $user The current User
-     * @param User|\Uni\Db\UserIface $msqUser
+     * @param UserIface $user The current User
+     * @param UserIface $msqUser
      * @return bool
      * @throws \Exception
      */
     public function canMasqueradeAs($user, $msqUser)
     {
+        
+        if (
+            (!$user->hasType([User::TYPE_ADMIN, User::TYPE_CLIENT]) && !$user->hasPermission(Permission::CAN_MASQUERADE)) ||
+            $user->getId() == $msqUser->getId() ||      // Cannot masquerade as self
+            ($user->hasType(User::TYPE_STAFF) && $user->hasPermission(Permission::MANAGE_STAFF) && $msqUser->hasPermission(Permission::MANAGE_STAFF))   // Cannot masquerade as another manage staff user
+        )
+            return false;
+
         $b = parent::canMasqueradeAs($user, $msqUser);
+        if (!$b && $user->hasPermission(Permission::MANAGE_STAFF)) {
+            $b = true;
+        }
         // If not admins they must be of the same institution
         if ($user->getInstitutionId() != 0 && $user->getInstitutionId() != $msqUser->getInstitutionId()) {
             $b = false;

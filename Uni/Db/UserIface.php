@@ -30,5 +30,34 @@ interface UserIface extends \Bs\Db\UserIface
     public function isEnrolled($subjectId);
 
 
+    /**
+     * @return boolean
+     */
+    public function isCoordinator();
+
+//    /**
+//     * @return boolean
+//     */
+//    public function isLecturer();
+
+    /**
+     * @return boolean
+     */
+    public function isMentor();
+
+    /**
+     * @return boolean
+     */
+    public function isClient();
+
+    /**
+     * @return boolean
+     */
+    public function isStaff();
+
+    /**
+     * @return boolean
+     */
+    public function isStudent();
 
 }

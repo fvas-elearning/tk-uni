@@ -99,7 +99,7 @@ class StatusSelect extends \Tk\Form\Field\Select
     {
         parent::load($values);
 
-        if ($this->getForm()->isSubmitted()) {
+        if ($this->getForm() && $this->getForm()->isSubmitted()) {
             $this->checkboxValue = false;
             if (isset($values[$this->getCheckboxName()]) && $values[$this->getCheckboxName()] == $this->getCheckboxName()) {
                 $this->checkboxValue = true;
@@ -122,11 +122,11 @@ class StatusSelect extends \Tk\Form\Field\Select
         $t->appendJsUrl(\Uni\Uri::create('/vendor/ttek/tk-uni/Uni/Form/Field/jquery.statusSelect.js'));
         $js = <<<JS
 jQuery(function ($) {
-    $('.form-group.tk-statusselect').statusSelect();
+    //$('.form-group.tk-statusselect').statusSelect();
+    $('.tk-status-select').statusSelect();
 });
 JS;
         $t->appendJs($js);
-
 
         $t->setAttr('checkbox', 'name', $this->getCheckboxName());
         $t->setAttr('checkbox', 'value', $this->getCheckboxName());
@@ -144,7 +144,7 @@ JS;
     public function __makeTemplate()
     {
         $xhtml = <<<HTML
-<div>
+<div class="tk-status-select">
   <div class="input-group">
     <div class="input-group-prepend">
       <div class="input-group-text">
